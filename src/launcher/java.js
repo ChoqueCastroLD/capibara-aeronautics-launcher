@@ -9,7 +9,8 @@ const JAVA_DIR = path.join(app.getPath('userData'), 'java');
 
 async function getVersion(javaExe) {
   return new Promise((resolve) => {
-    execFile(javaExe, ['-version'], { timeout: 5000 }, (_err, _stdout, stderr) => {
+    execFile(javaExe, ['-version'], { timeout: 5000 }, (err, _stdout, stderr) => {
+      if (err) return resolve(null);
       const match = stderr.match(/version "([^"]+)"/);
       resolve(match ? match[1] : null);
     });
