@@ -1,9 +1,9 @@
 const { execFile, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const https = require('https');
 const os = require('os');
 const { app } = require('electron');
+const { downloadFile } = require('./download');
 
 const JAVA_DIR = path.join(app.getPath('userData'), 'java');
 
@@ -90,28 +90,8 @@ async function downloadTemurin21(onProgress) {
 
   const zipPath = path.join(os.tmpdir(), 'temurin21.zip');
 
-  await new Promise((resolve, reject) => {
-    const follow = (u) => {
-      https.get(u, { headers: { 'User-Agent': 'CapibaraLauncher' } }, (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
-          return follow(res.headers.location);
-        }
-        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
-
-        const total = parseInt(res.headers['content-length'] || '0');
-        let received = 0;
-        const file = fs.createWriteStream(zipPath);
-        res.on('data', (chunk) => {
-          received += chunk.length;
-          if (total) onProgress({ phase: 'Descargando Java 21...', percent: Math.round((received / total) * 80) });
-        });
-        res.pipe(file);
-        file.on('finish', () => { file.close(); resolve(); });
-        file.on('error', reject);
-        res.on('error', reject);
-      }).on('error', reject);
-    };
-    follow(url);
+  await downloadFile(url, zipPath, (received, total) => {
+    if (total) onProgress({ phase: 'Descargando Java 21...', percent: Math.round((received / total) * 80) });
   });
 
   onProgress({ phase: 'Extrayendo Java...', percent: 82 });
