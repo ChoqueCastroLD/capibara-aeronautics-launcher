@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { Client } = require('minecraft-launcher-core');
 const { app } = require('electron');
 
-const { NEOFORGE_VERSION_ID, MC_VERSION, getGameDir } = require('./install');
+const { NEOFORGE_VERSION_ID, MC_VERSION, getGameDir, findLwjglJar } = require('./install');
 
 const MC_DIR = path.join(app.getPath('appData'), '.minecraft');
 
@@ -103,6 +103,10 @@ function buildClasspath() {
 async function launch({ username, javaPath, ram }, { onData, onClose, onProgress }) {
 	const client = new Client();
 	const uuid = generateOfflineUUID(username);
+
+	if (!findLwjglJar()) {
+		throw new Error('Instalación incompleta: faltan librerías de LWJGL. Desinstala y vuelve a instalar el modpack para corregirlo.');
+	}
 
 	const classes = buildClasspath();
 	console.log(`[launch] Classpath: ${classes.length} entradas`);

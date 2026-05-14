@@ -45,10 +45,28 @@ function getLocalMrpackPath() {
   return fs.existsSync(localPath) ? localPath : null;
 }
 
+function findLwjglJar() {
+  const lwjglDir = path.join(MC_DIR, 'libraries', 'org', 'lwjgl', 'lwjgl');
+  if (!fs.existsSync(lwjglDir)) return null;
+  try {
+    for (const version of fs.readdirSync(lwjglDir)) {
+      const jar = path.join(lwjglDir, version, `lwjgl-${version}.jar`);
+      if (fs.existsSync(jar)) return jar;
+    }
+  } catch {}
+  return null;
+}
+
 function isInstalled() {
   const versionJson = path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.json`);
   const modsDir = path.join(GAME_DIR, 'mods');
-  return fs.existsSync(versionJson) && fs.existsSync(CLIENT_SRG_PATH) && fs.existsSync(modsDir) && fs.readdirSync(modsDir).length > 0;
+  return (
+    fs.existsSync(versionJson) &&
+    fs.existsSync(CLIENT_SRG_PATH) &&
+    fs.existsSync(modsDir) &&
+    fs.readdirSync(modsDir).length > 0 &&
+    !!findLwjglJar()
+  );
 }
 
 async function install({ javaPath, ram, mrpackUrl }, onProgress) {
@@ -229,4 +247,4 @@ async function uninstall(onProgress) {
   send('Desinstalado correctamente', 100);
 }
 
-module.exports = { install, uninstall, getGameDir, isInstalled, NEOFORGE_VERSION_ID, MC_VERSION };
+module.exports = { install, uninstall, getGameDir, isInstalled, findLwjglJar, NEOFORGE_VERSION_ID, MC_VERSION };
