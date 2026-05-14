@@ -126,9 +126,16 @@ async function init() {
   }
 
   window.api.onInstallProgress((p) => {
-    progressWrap.classList.remove('hidden'); // auto-mostrar si hay progreso
+    progressWrap.classList.remove('hidden');
     progressFill.style.width = `${p.percent}%`;
     progressLabel.textContent = p.message;
+    if (isInstalling) {
+      progressWrap.classList.add('install-mode');
+      btnPlay.style.setProperty('--progress', `${p.percent}%`);
+      btnPlay.textContent = `INSTALANDO ${p.percent}%`;
+    } else {
+      progressWrap.classList.remove('install-mode');
+    }
   });
 
   window.api.onGameClosed((code) => {
@@ -177,10 +184,10 @@ async function detectJava() {
       javaStatus.className = 'java-status warn';
       btnDownloadJava.classList.add('hidden');
     } else {
-      javaStatus.textContent = `✗ Java ${best.major} no compatible`;
+      javaStatus.textContent = `✗ Java ${best.major} no compatible — NeoForge requiere Java 21`;
       javaStatus.className = 'java-status err';
       javaPath = null;
-      btnDownloadJava.classList.add('hidden');
+      btnDownloadJava.classList.remove('hidden');
     }
   } else {
     javaPath = null;
@@ -198,7 +205,7 @@ btnDownloadJava.addEventListener('click', async () => {
   btnDownloadJava.querySelector('.java-btn-text').textContent = 'Descargando... 0%';
   javaStatus.textContent = 'Descargando Java 21...';
   javaStatus.className = 'java-status warn';
-  progressWrap.classList.remove('hidden');
+  progressWrap.classList.remove('hidden', 'install-mode');
 
   window.api.onJavaProgress((p) => {
     progressFill.style.width = `${p.percent}%`;
@@ -573,7 +580,10 @@ function updateUI() {
     btnPlay.className = 'play-btn running';
     btnPlay.disabled = true;
   } else if (isInstalling) {
-    btnPlay.textContent = 'INSTALANDO...';
+    if (!btnPlay.classList.contains('installing')) {
+      btnPlay.textContent = 'INSTALANDO 0%';
+      btnPlay.style.setProperty('--progress', '0%');
+    }
     btnPlay.className = 'play-btn installing';
     btnPlay.disabled = true;
   } else if (!isOnline) {
