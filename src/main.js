@@ -195,7 +195,7 @@ ipcMain.handle('java:browse', async () => {
 ipcMain.handle('modpack:install', async (_e, { javaPath, ram, mrpackUrl, version }) => {
   try {
     log(`[Install] Iniciando instalación del modpack${version ? ` v${version}` : ''}${mrpackUrl ? ` (remoto)` : ''}`);
-    await installer.install(
+    const result = await installer.install(
       { javaPath, ram, mrpackUrl },
       (progress) => {
         log(`[Install] ${progress.message} (${progress.percent}%)`);
@@ -204,7 +204,7 @@ ipcMain.handle('modpack:install', async (_e, { javaPath, ram, mrpackUrl, version
     );
     const s = state.load();
     s.installed = true;
-    s.installedVersion = version || '2.1';
+    s.installedVersion = version || result?.version || '2.1';
     state.save(s);
     log('[Install] Instalación completada');
     return { ok: true };

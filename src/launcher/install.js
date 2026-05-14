@@ -23,9 +23,26 @@ const CLIENT_SRG_PATH = path.join(
 
 function getGameDir() { return GAME_DIR; }
 
-function getMrpackPath() {
-  if (app.isPackaged) return path.join(process.resourcesPath, 'modpack.mrpack');
-  return path.join(__dirname, '../../resources/modpack.mrpack');
+const VERSION_URL = 'https://raw.githubusercontent.com/ChoqueCastroLD/aeronautics-modpack-versions/main/version.json';
+
+function fetchVersionJson() {
+  return new Promise((resolve, reject) => {
+    https.get(VERSION_URL, { timeout: 10000, headers: { 'User-Agent': 'CapibaraLauncher/1.0' } }, (res) => {
+      if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode} al leer version.json`));
+      let data = '';
+      res.on('data', (c) => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error('version.json inválido')); }
+      });
+    }).on('error', reject).on('timeout', () => reject(new Error('Timeout al leer version.json')));
+  });
+}
+
+function getLocalMrpackPath() {
+  if (app.isPackaged) return null;
+  const localPath = path.join(__dirname, '../../resources/modpack.mrpack');
+  return fs.existsSync(localPath) ? localPath : null;
 }
 
 function isInstalled() {
@@ -119,21 +136,36 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
   }
   send('NeoForge instalado', 40);
 
-  // ── 3. Leer mrpack y extraer mods ────────────────────────────────────────
-  send('Leyendo modpack...', 41);
-  let mrpackPath = getMrpackPath();
-  if (mrpackUrl) {
-    const remoteCache = path.join(os.tmpdir(), `capibara-modpack-${Date.now()}.mrpack`);
-    send('Descargando modpack desde el servidor...', 41);
-    try {
-      await downloadFile(mrpackUrl, remoteCache, (r, t) => {
-        send(`Descargando modpack (${Math.round(r / 1024 / 1024)} MB)...`, 41);
-      });
-      mrpackPath = remoteCache;
-    } catch (err) {
-      console.warn('[Install] Falló descarga remota, usando mrpack local:', err.message);
+  // ── 3. Obtener mrpack: local (dev) o remoto (prod) ────────────────────────
+  send('Preparando modpack...', 40);
+  let mrpackPath = null;
+  let resolvedVersion = null;
+
+  if (!mrpackUrl) {
+    const local = getLocalMrpackPath();
+    if (local) {
+      mrpackPath = local;
+    } else {
+      send('Buscando versión más reciente...', 41);
+      const versionInfo = await fetchVersionJson();
+      mrpackUrl = versionInfo.mrpack_url;
+      resolvedVersion = versionInfo.version;
+      if (!mrpackUrl) throw new Error('version.json no contiene mrpack_url');
     }
   }
+
+  if (mrpackUrl) {
+    const remoteCache = path.join(os.tmpdir(), `capibara-modpack-${Date.now()}.mrpack`);
+    send('Descargando modpack...', 42);
+    await downloadFile(mrpackUrl, remoteCache, (r, t) => {
+      const mb = (r / 1024 / 1024).toFixed(1);
+      const totalMb = (t / 1024 / 1024).toFixed(1);
+      send(`Descargando modpack (${mb} / ${totalMb} MB)...`, 42 + (r / t) * 5);
+    });
+    mrpackPath = remoteCache;
+  }
+
+  if (!mrpackPath) throw new Error('No se pudo obtener el archivo del modpack');
   const zip = new StreamZip.async({ file: mrpackPath });
 
   const indexRaw = await zip.entryData('modrinth.index.json');
@@ -197,6 +229,7 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
   }
 
   send('¡Instalación completa!', 100);
+  return { version: resolvedVersion };
 }
 
 async function uninstall(onProgress) {

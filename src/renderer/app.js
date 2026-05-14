@@ -194,6 +194,8 @@ btnDownloadJava.addEventListener('click', async () => {
   if (isDownloadingJava) return;
   isDownloadingJava = true;
   btnDownloadJava.disabled = true;
+  btnDownloadJava.classList.add('loading');
+  btnDownloadJava.querySelector('.java-btn-text').textContent = 'Descargando... 0%';
   javaStatus.textContent = 'Descargando Java 21...';
   javaStatus.className = 'java-status warn';
   progressWrap.classList.remove('hidden');
@@ -201,9 +203,12 @@ btnDownloadJava.addEventListener('click', async () => {
   window.api.onJavaProgress((p) => {
     progressFill.style.width = `${p.percent}%`;
     progressLabel.textContent = p.phase;
+    btnDownloadJava.querySelector('.java-btn-text').textContent = `${p.phase}... ${p.percent}%`;
   });
 
   const result = await window.api.downloadJava();
+  btnDownloadJava.classList.remove('loading');
+  btnDownloadJava.querySelector('.java-btn-text').textContent = 'Descargar Java 21';
   if (result) {
     javaPath = result.path;
     javaStatus.textContent = '✓ Java 21 instalado';

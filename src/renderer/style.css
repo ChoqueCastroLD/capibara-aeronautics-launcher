@@ -82,8 +82,14 @@ body.map-hidden .play-row { margin-top: 14px; }
 .java-status.warn { color: var(--accent); }
 .java-status.err { color: var(--red); }
 .java-btn { background: var(--accent); border: none; border-radius: 6px; color: #fff;
-  font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer; transition: opacity .15s; }
-.java-btn:hover { opacity: .85; }
+  font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer; transition: opacity .15s;
+  display: inline-flex; align-items: center; gap: 6px; }
+.java-btn:hover:not(:disabled) { opacity: .85; }
+.java-btn:disabled { opacity: .6; cursor: not-allowed; background: var(--muted); }
+.java-btn .spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; display: none; }
+.java-btn.loading .spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Username row */
 .username-row { display: flex; align-items: center; gap: 10px; }
