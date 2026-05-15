@@ -45,6 +45,33 @@ function getLocalMrpackPath() {
   return fs.existsSync(localPath) ? localPath : null;
 }
 
+async function repairMissingLibraries(send) {
+  const vanillaJsonPath = path.join(MC_DIR, 'versions', MC_VERSION, `${MC_VERSION}.json`);
+  if (!fs.existsSync(vanillaJsonPath)) return;
+  const vanillaJson = JSON.parse(fs.readFileSync(vanillaJsonPath, 'utf8'));
+  const libDir = path.join(MC_DIR, 'libraries');
+  const missing = [];
+  for (const lib of (vanillaJson.libraries || [])) {
+    const artifact = lib.downloads?.artifact;
+    if (!artifact?.path || !artifact?.url) continue;
+    const full = path.join(libDir, artifact.path.replace(/\//g, path.sep));
+    if (!fs.existsSync(full)) {
+      missing.push({ url: artifact.url, dest: full, name: path.basename(artifact.path) });
+    }
+  }
+  if (missing.length === 0) return;
+  console.log(`[Repair] ${missing.length} librerías faltantes, descargando...`);
+  for (let i = 0; i < missing.length; i++) {
+    const m = missing[i];
+    send(`Reparando librerías (${i + 1}/${missing.length})... ${m.name}`, 38);
+    try {
+      await downloadFile(m.url, m.dest, null);
+    } catch (e) {
+      console.warn(`[Repair] No se pudo descargar ${m.name}: ${e.message}`);
+    }
+  }
+}
+
 function findLwjglJar() {
   const lwjglDir = path.join(MC_DIR, 'libraries', 'org', 'lwjgl', 'lwjgl');
   if (!fs.existsSync(lwjglDir)) return null;
@@ -124,7 +151,14 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
       await new Promise(r => setTimeout(r, 2000));
     }
   }
-  send('NeoForge instalado', 40);
+  send('NeoForge instalado', 38);
+
+  // ── 2.5 Reparar librerías faltantes que NeoForge debió descargar ──────────
+  // Algunos usuarios terminan con jars faltantes (antivirus, red flaky, rate
+  // limits de Mojang). Verificamos cada lib del vanilla json y descargamos
+  // las que falten con nuestro downloadFile robusto.
+  await repairMissingLibraries(send);
+  send('Librerías verificadas', 40);
 
   // ── 3. Obtener mrpack: local (dev) o remoto (prod) ────────────────────────
   send('Preparando modpack...', 40);
