@@ -79,9 +79,13 @@ function buildClasspath() {
 	const neoforgeJson = JSON.parse(fs.readFileSync(neoforgeJsonPath, 'utf8'));
 	const vanillaJson = JSON.parse(fs.readFileSync(vanillaJsonPath, 'utf8'));
 
+	let lwjglVersion = null;
 	for (const json of [vanillaJson, neoforgeJson]) {
 		for (const lib of (json.libraries || [])) {
 			if (!isLibAllowedOnWindows(lib)) continue;
+			// Detectar la versión de LWJGL declarada (ej. "org.lwjgl:lwjgl:3.3.3")
+			const m = typeof lib.name === 'string' && lib.name.match(/^org\.lwjgl:lwjgl:([\d.]+)$/);
+			if (m) lwjglVersion = m[1];
 			// Omitir librerías que son solo natives (sin artifact, o con natives pero sin artifact.path)
 			const artifact = lib.downloads?.artifact;
 			if (!artifact?.path) continue;
@@ -89,24 +93,33 @@ function buildClasspath() {
 		}
 	}
 
-	// Red de seguridad: algunos usuarios terminan con un vanilla json incompleto
-	// o con versiones de LWJGL desalineadas. Escaneamos org/lwjgl/ en disco y
-	// añadimos todos los jars encontrados al classpath.
-	const lwjglRoot = path.join(libDir, 'org', 'lwjgl');
-	if (fs.existsSync(lwjglRoot)) {
-		const stack = [lwjglRoot];
-		while (stack.length) {
-			const dir = stack.pop();
-			try {
-				for (const entry of fs.readdirSync(dir)) {
-					const full = path.join(dir, entry);
-					const stat = fs.statSync(full);
-					if (stat.isDirectory()) stack.push(full);
-					else if (entry.endsWith('.jar') && !entry.includes('-sources') && !entry.includes('-javadoc')) {
-						addLib(full);
+	// Red de seguridad: si el vanilla json estaba incompleto, escaneamos org/lwjgl/
+	// en disco — pero SOLO la versión declarada y SOLO jars compatibles con Windows.
+	// (Versiones viejas de otras instalaciones rompen el juego con NoSuchMethodError.)
+	if (lwjglVersion) {
+		const lwjglRoot = path.join(libDir, 'org', 'lwjgl');
+		if (fs.existsSync(lwjglRoot)) {
+			const stack = [lwjglRoot];
+			while (stack.length) {
+				const dir = stack.pop();
+				try {
+					for (const entry of fs.readdirSync(dir)) {
+						const full = path.join(dir, entry);
+						const stat = fs.statSync(full);
+						if (stat.isDirectory()) {
+							stack.push(full);
+						} else if (
+							entry.endsWith('.jar') &&
+							!entry.includes('-sources') &&
+							!entry.includes('-javadoc') &&
+							full.split(path.sep).includes(lwjglVersion) &&
+							!/-natives-(linux|macos|windows-arm64|windows-x86)/.test(entry)
+						) {
+							addLib(full);
+						}
 					}
-				}
-			} catch {}
+				} catch {}
+			}
 		}
 	}
 
