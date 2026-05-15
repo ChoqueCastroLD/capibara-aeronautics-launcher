@@ -89,6 +89,27 @@ function buildClasspath() {
 		}
 	}
 
+	// Red de seguridad: algunos usuarios terminan con un vanilla json incompleto
+	// o con versiones de LWJGL desalineadas. Escaneamos org/lwjgl/ en disco y
+	// añadimos todos los jars encontrados al classpath.
+	const lwjglRoot = path.join(libDir, 'org', 'lwjgl');
+	if (fs.existsSync(lwjglRoot)) {
+		const stack = [lwjglRoot];
+		while (stack.length) {
+			const dir = stack.pop();
+			try {
+				for (const entry of fs.readdirSync(dir)) {
+					const full = path.join(dir, entry);
+					const stat = fs.statSync(full);
+					if (stat.isDirectory()) stack.push(full);
+					else if (entry.endsWith('.jar') && !entry.includes('-sources') && !entry.includes('-javadoc')) {
+						addLib(full);
+					}
+				}
+			} catch {}
+		}
+	}
+
 	// neoforge-21.1.228.jar lo añade MCLC como trailing game JAR.
 	// NO añadimos 1.21.1.jar porque eso confunde al bootstraplauncher
 	// al intentar procesarlo como módulo fuera de DignoreList.
