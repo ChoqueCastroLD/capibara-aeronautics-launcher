@@ -361,6 +361,18 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
     applyGpuPreference(javaPath, gpuPref ?? 2);
     log(`[GPU] Preferencia aplicada: ${gpuPref ?? 2}`);
 
+    // Auto-reparar librerías vanilla/NeoForge faltantes (instalaciones viejas
+    // incompletas) sin requerir reinstalación manual.
+    try {
+      const repaired = await installer.repairMissingLibraries((progress) => {
+        log(`[Launch] ${progress.message}`);
+        mainWindow.webContents.send('install:progress', progress);
+      });
+      if (repaired > 0) log(`[Launch] ${repaired} librerías reparadas antes de lanzar`);
+    } catch (e) {
+      log(`[Launch] Reparación previa falló: ${e.message}`);
+    }
+
     const s = state.load();
     discord.setPlaying({ username, modpackVersion: s.installedVersion || '2.1' }).catch(() => {});
 

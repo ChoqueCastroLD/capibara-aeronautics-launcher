@@ -46,20 +46,29 @@ function getLocalMrpackPath() {
 }
 
 async function repairMissingLibraries(send) {
-  const vanillaJsonPath = path.join(MC_DIR, 'versions', MC_VERSION, `${MC_VERSION}.json`);
-  if (!fs.existsSync(vanillaJsonPath)) return;
-  const vanillaJson = JSON.parse(fs.readFileSync(vanillaJsonPath, 'utf8'));
   const libDir = path.join(MC_DIR, 'libraries');
+  const jsonPaths = [
+    path.join(MC_DIR, 'versions', MC_VERSION, `${MC_VERSION}.json`),
+    path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.json`),
+  ];
   const missing = [];
-  for (const lib of (vanillaJson.libraries || [])) {
-    const artifact = lib.downloads?.artifact;
-    if (!artifact?.path || !artifact?.url) continue;
-    const full = path.join(libDir, artifact.path.replace(/\//g, path.sep));
-    if (!fs.existsSync(full)) {
-      missing.push({ url: artifact.url, dest: full, name: path.basename(artifact.path) });
+  const seen = new Set();
+  for (const jsonPath of jsonPaths) {
+    if (!fs.existsSync(jsonPath)) continue;
+    let json;
+    try { json = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch { continue; }
+    for (const lib of (json.libraries || [])) {
+      const artifact = lib.downloads?.artifact;
+      if (!artifact?.path || !artifact?.url) continue;
+      const full = path.join(libDir, artifact.path.replace(/\//g, path.sep));
+      if (seen.has(full)) continue;
+      seen.add(full);
+      if (!fs.existsSync(full)) {
+        missing.push({ url: artifact.url, dest: full, name: path.basename(artifact.path) });
+      }
     }
   }
-  if (missing.length === 0) return;
+  if (missing.length === 0) return 0;
   console.log(`[Repair] ${missing.length} librerías faltantes, descargando...`);
   for (let i = 0; i < missing.length; i++) {
     const m = missing[i];
@@ -70,6 +79,7 @@ async function repairMissingLibraries(send) {
       console.warn(`[Repair] No se pudo descargar ${m.name}: ${e.message}`);
     }
   }
+  return missing.length;
 }
 
 function findLwjglJar() {
@@ -281,4 +291,4 @@ async function uninstall(onProgress) {
   send('Desinstalado correctamente', 100);
 }
 
-module.exports = { install, uninstall, getGameDir, isInstalled, findLwjglJar, NEOFORGE_VERSION_ID, MC_VERSION };
+module.exports = { install, uninstall, getGameDir, isInstalled, findLwjglJar, repairMissingLibraries, NEOFORGE_VERSION_ID, MC_VERSION };
