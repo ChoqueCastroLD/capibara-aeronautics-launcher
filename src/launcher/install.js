@@ -39,6 +39,34 @@ function fetchVersionJson() {
   });
 }
 
+// Descarga un JSON por HTTPS siguiendo redirects.
+function fetchJson(url, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirects > 5) return reject(new Error('Demasiados redirects'));
+    https.get(url, { timeout: 12000, headers: { 'User-Agent': 'CapibaraLauncher/1.0' } }, (res) => {
+      if ([301, 302, 307, 308].includes(res.statusCode)) {
+        res.resume();
+        return resolve(fetchJson(res.headers.location, redirects + 1));
+      }
+      if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode} (${url})`));
+      let data = '';
+      res.on('data', (c) => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error(`JSON inválido (${url})`)); }
+      });
+    }).on('error', reject).on('timeout', () => reject(new Error(`Timeout (${url})`)));
+  });
+}
+
+// Obtiene el JSON canónico de Mojang para MC_VERSION (lista de librerías oficial).
+async function fetchMojangVanillaJson() {
+  const manifest = await fetchJson('https://launchermeta.mojang.com/mc/game/version_manifest_v2.json');
+  const entry = (manifest.versions || []).find((v) => v.id === MC_VERSION);
+  if (!entry?.url) throw new Error(`${MC_VERSION} no está en el manifiesto de Mojang`);
+  return fetchJson(entry.url);
+}
+
 function getLocalMrpackPath() {
   if (app.isPackaged) return null;
   const localPath = path.join(__dirname, '../../resources/modpack.mrpack');
@@ -47,16 +75,39 @@ function getLocalMrpackPath() {
 
 async function repairMissingLibraries(send) {
   const libDir = path.join(MC_DIR, 'libraries');
-  const jsonPaths = [
-    path.join(MC_DIR, 'versions', MC_VERSION, `${MC_VERSION}.json`),
-    path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.json`),
-  ];
+  const vanillaJsonPath = path.join(MC_DIR, 'versions', MC_VERSION, `${MC_VERSION}.json`);
+
+  // Si el 1.21.1.json local está corrupto/incompleto (otro launcher o modpack
+  // reusó el id "1.21.1"), buildClasspath y la reparación se quedan sin las
+  // libs vanilla. Descargamos el JSON canónico de Mojang y, si tiene más
+  // librerías que el local, lo reescribimos para que todo lo lea correcto.
+  const jsonObjs = [];
+  try {
+    send('Verificando versión de Minecraft...', 38);
+    const mojangJson = await fetchMojangVanillaJson();
+    const mojangLibs = (mojangJson.libraries || []).length;
+    let localLibs = -1;
+    try {
+      localLibs = (JSON.parse(fs.readFileSync(vanillaJsonPath, 'utf8')).libraries || []).length;
+    } catch {}
+    if (mojangLibs > localLibs) {
+      fs.mkdirSync(path.dirname(vanillaJsonPath), { recursive: true });
+      fs.writeFileSync(vanillaJsonPath, JSON.stringify(mojangJson, null, 2));
+      console.log(`[Repair] 1.21.1.json reescrito desde Mojang (${localLibs} -> ${mojangLibs} libs)`);
+    }
+    jsonObjs.push(mojangJson);
+  } catch (e) {
+    console.warn(`[Repair] No se pudo obtener el JSON de Mojang: ${e.message}`);
+  }
+
+  for (const jsonPath of [vanillaJsonPath, path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.json`)]) {
+    if (!fs.existsSync(jsonPath)) continue;
+    try { jsonObjs.push(JSON.parse(fs.readFileSync(jsonPath, 'utf8'))); } catch {}
+  }
+
   const missing = [];
   const seen = new Set();
-  for (const jsonPath of jsonPaths) {
-    if (!fs.existsSync(jsonPath)) continue;
-    let json;
-    try { json = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch { continue; }
+  for (const json of jsonObjs) {
     for (const lib of (json.libraries || [])) {
       const artifact = lib.downloads?.artifact;
       if (!artifact?.path || !artifact?.url) continue;
