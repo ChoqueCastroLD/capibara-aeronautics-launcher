@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Tray, Menu, powerSaveBlocker } = require('electron');
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -118,15 +118,42 @@ if (!gotLock) {
   app.whenReady().then(() => {
     try {
       fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+      // Conservar el log de la sesión anterior (clave para diagnosticar crashes)
+      if (fs.existsSync(LOG_FILE)) {
+        try { fs.copyFileSync(LOG_FILE, LOG_FILE.replace(/\.log$/, '-prev.log')); } catch {}
+      }
       fs.writeFileSync(LOG_FILE, `=== Sesión iniciada ${new Date().toISOString()} ===\n`);
     } catch {}
     createWindow();
     createTray();
-    setTimeout(() => clearEfficiencyMode(process.pid), 1500);
+
+    // Evitar que Windows suspenda/throttlee el launcher en el tray
+    // (causaba "Application Hang - Top level window is idle").
+    try { powerSaveBlocker.start('prevent-app-suspension'); } catch {}
+    const selfUnthrottle = () => clearEfficiencyMode(process.pid);
+    setTimeout(selfUnthrottle, 1500);
+    setInterval(selfUnthrottle, 60000);
   });
 }
 app.on('window-all-closed', () => { if (isQuitting) app.quit(); });
 app.on('before-quit', () => { isQuitting = true; });
+
+// ── Captura de crashes del launcher ───────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  try { log(`[CRASH] uncaughtException: ${err && err.stack || err}`); } catch {}
+});
+process.on('unhandledRejection', (reason) => {
+  try { log(`[CRASH] unhandledRejection: ${reason && reason.stack || reason}`); } catch {}
+});
+app.on('render-process-gone', (_e, _wc, details) => {
+  log(`[CRASH] render-process-gone: ${JSON.stringify(details)}`);
+  if (!isQuitting && mainWindow) {
+    try { mainWindow.reload(); } catch {}
+  }
+});
+app.on('child-process-gone', (_e, details) => {
+  log(`[CRASH] child-process-gone: ${JSON.stringify(details)}`);
+});
 
 // ── Ventana ───────────────────────────────────────────────────────────────────
 ipcMain.on('window:minimize', () => mainWindow.minimize());
