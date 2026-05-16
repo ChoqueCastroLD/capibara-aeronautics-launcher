@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
 
   getState: () => ipcRenderer.invoke('state:get'),
   saveState: (data) => ipcRenderer.invoke('state:save', data),
+  getTotalRamGB: () => ipcRenderer.invoke('system:totalRamGB'),
 
   detectGpus: () => ipcRenderer.invoke('gpu:detect'),
   detectJava: () => ipcRenderer.invoke('java:detect'),

@@ -225,4 +225,8 @@ function killGame() {
 	return false;
 }
 
-module.exports = { launch, killGame };
+function getGamePid() {
+	return currentProcess && !currentProcess.killed ? currentProcess.pid : null;
+}
+
+module.exports = { launch, killGame, getGamePid };

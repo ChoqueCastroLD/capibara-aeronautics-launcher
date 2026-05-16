@@ -61,7 +61,15 @@ async function init() {
   const ram = Math.max(4, state.ram || 6);
   ramSlider.value = ram; ramValue.textContent = `${ram} GB`;
 
-  const mapVisible = state.mapVisible !== false;
+  let mapVisible;
+  if (state.mapVisible === undefined) {
+    // Primera vez: ocultar el mapa por defecto en PCs con < 12 GB de RAM
+    let totalRam = 16;
+    try { totalRam = await window.api.getTotalRamGB(); } catch {}
+    mapVisible = totalRam >= 12;
+  } else {
+    mapVisible = state.mapVisible !== false;
+  }
   applyMapVisible(mapVisible);
 
   applyTheme(state.theme === 'light' ? 'light' : 'dark');

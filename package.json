@@ -26,9 +26,14 @@
       "output": "dist"
     },
     "compression": "store",
+    "electronLanguages": [
+      "es",
+      "en-US"
+    ],
     "files": [
       "src/**/*",
-      "resources/logo.png"
+      "resources/logo.png",
+      "resources/icon.ico"
     ],
     "win": {
       "target": [
@@ -42,7 +47,8 @@
       "icon": "resources/icon.ico"
     },
     "portable": {
-      "artifactName": "CapibaraAeronauticsLauncher.exe"
+      "artifactName": "CapibaraAeronauticsLauncher.exe",
+      "unpackDirName": "CapibaraAeronauticsLauncher"
     }
   }
 }

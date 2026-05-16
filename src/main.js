@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Tray, Menu } = require('electron');
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const axios = require('axios');
 
 const javaManager = require('./launcher/java');
@@ -13,6 +14,54 @@ const discord = require('./launcher/discord');
 const ping = require('ping-minecraft-server');
 
 let mainWindow;
+let tray = null;
+let isQuitting = false;
+const TRAY_ICON = path.join(__dirname, '..', 'resources', 'icon.ico');
+
+function showLauncher() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+// Oculta al tray si existe; si no, minimiza (para no dejar la ventana inaccesible)
+function hideToTray() {
+  if (!mainWindow) return;
+  if (tray) mainWindow.hide();
+  else mainWindow.minimize();
+}
+
+function resolveTrayIcon() {
+  const candidates = [
+    TRAY_ICON,
+    path.join(__dirname, '..', 'resources', 'logo.png'),
+    path.join(process.resourcesPath || '', 'icon.ico'),
+  ];
+  for (const c of candidates) {
+    try { if (c && fs.existsSync(c)) return c; } catch {}
+  }
+  return TRAY_ICON;
+}
+
+function createTray() {
+  if (tray) return;
+  try {
+    const iconPath = resolveTrayIcon();
+    tray = new Tray(iconPath);
+    log(`[Tray] Icono: ${iconPath}`);
+    tray.setToolTip('Capibara Aeronautics Launcher');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Abrir launcher', click: showLauncher },
+      { type: 'separator' },
+      { label: 'Salir', click: () => { isQuitting = true; app.quit(); } },
+    ]));
+    tray.on('click', showLauncher);
+    tray.on('double-click', showLauncher);
+  } catch (e) {
+    console.warn('[Tray] No se pudo crear:', e.message);
+  }
+}
 
 // ── Log buffer ────────────────────────────────────────────────────────────────
 const LOG_FILE = path.join(app.getPath('appData'), 'CapibaraAeronautics', 'launcher.log');
@@ -50,16 +99,34 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
+
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      hideToTray();
+    }
+  });
 }
 
-app.whenReady().then(() => {
-  try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    fs.writeFileSync(LOG_FILE, `=== Sesión iniciada ${new Date().toISOString()} ===\n`);
-  } catch {}
-  createWindow();
-});
-app.on('window-all-closed', () => app.quit());
+// Una sola instancia: si se abre de nuevo, enfoca la ya existente.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => showLauncher());
+
+  app.whenReady().then(() => {
+    try {
+      fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+      fs.writeFileSync(LOG_FILE, `=== Sesión iniciada ${new Date().toISOString()} ===\n`);
+    } catch {}
+    createWindow();
+    createTray();
+    setTimeout(() => clearEfficiencyMode(process.pid), 1500);
+  });
+}
+app.on('window-all-closed', () => { if (isQuitting) app.quit(); });
+app.on('before-quit', () => { isQuitting = true; });
 
 // ── Ventana ───────────────────────────────────────────────────────────────────
 ipcMain.on('window:minimize', () => mainWindow.minimize());
@@ -67,7 +134,7 @@ ipcMain.on('window:maximize', () => {
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
-ipcMain.on('window:close', () => app.quit());
+ipcMain.on('window:close', () => hideToTray());
 ipcMain.on('window:setMapVisible', (_e, visible) => {
   state.save({ mapVisible: visible });
 });
@@ -120,6 +187,9 @@ ipcMain.handle('skin:get', async (_e, username) => {
     return null;
   }
 });
+
+// ── Sistema ───────────────────────────────────────────────────────────────────
+ipcMain.handle('system:totalRamGB', () => Math.round(os.totalmem() / (1024 ** 3)));
 
 // ── Estado ────────────────────────────────────────────────────────────────────
 ipcMain.handle('state:get', () => state.load());
@@ -232,6 +302,57 @@ ipcMain.handle('modpack:uninstall', async () => {
   }
 });
 
+// ── Modo eficiencia (EcoQoS) ──────────────────────────────────────────────────
+// Windows 11 mete procesos en "modo eficiencia" cuando su padre está en
+// segundo plano (launcher en el tray), throttleando Java/Minecraft. Sacamos
+// al proceso del juego y todo su árbol de EcoQoS vía SetProcessInformation.
+const EFF_SCRIPT = path.join(os.tmpdir(), 'capibara-fixeff.ps1');
+function writeEffScript() {
+  const ps = `
+$ErrorActionPreference='SilentlyContinue'
+$src=@"
+using System;
+using System.Runtime.InteropServices;
+public class Eff {
+  [DllImport("kernel32.dll",SetLastError=true)] public static extern IntPtr OpenProcess(uint a,bool i,uint p);
+  [DllImport("kernel32.dll",SetLastError=true)] public static extern bool SetPriorityClass(IntPtr h,uint c);
+  [DllImport("kernel32.dll",SetLastError=true)] public static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll",SetLastError=true)] public static extern bool SetProcessInformation(IntPtr h,int c,ref PPTS s,uint l);
+  [StructLayout(LayoutKind.Sequential)] public struct PPTS { public uint Version; public uint ControlMask; public uint StateMask; }
+  public static void Fix(uint pid){
+    IntPtr h=OpenProcess(0x1F0FFF,false,pid); if(h==IntPtr.Zero) return;
+    SetPriorityClass(h,0x20);
+    PPTS s=new PPTS(); s.Version=1; s.ControlMask=1; s.StateMask=0;
+    SetProcessInformation(h,4,ref s,(uint)Marshal.SizeOf(s));
+    CloseHandle(h);
+  }
+}
+"@
+Add-Type $src
+function FixTree($id){
+  try{ [Eff]::Fix([uint32]$id) }catch{}
+  Get-CimInstance Win32_Process -Filter "ParentProcessId=$id" | ForEach-Object { FixTree $_.ProcessId }
+}
+FixTree $args[0]
+`;
+  fs.writeFileSync(EFF_SCRIPT, ps);
+}
+function clearEfficiencyMode(pid) {
+  if (!pid) return;
+  try {
+    if (!fs.existsSync(EFF_SCRIPT)) writeEffScript();
+    const child = require('child_process').spawn(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', EFF_SCRIPT, String(pid)],
+      { detached: true, stdio: 'ignore', windowsHide: true }
+    );
+    child.unref();
+    log(`[Eff] Solicitado fix de modo eficiencia para PID ${pid} (+árbol)`);
+  } catch (e) {
+    log(`[Eff] Error: ${e.message}`);
+  }
+}
+
 // ── Lanzamiento ───────────────────────────────────────────────────────────────
 ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) => {
   try {
@@ -254,7 +375,7 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
           log(`[Game] Proceso cerrado con código ${code}`);
           discord.setIdle().catch(() => {});
           mainWindow.webContents.send('game:closed', code);
-          mainWindow.show();
+          showLauncher();
         },
         onProgress: (progress) => {
           mainWindow.webContents.send('install:progress', progress);
@@ -262,7 +383,17 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
       }
     );
 
-    mainWindow.minimize();
+    hideToTray();
+
+    // Sacar a Java y su árbol de procesos del modo eficiencia de Windows.
+    // Se reintenta porque el árbol (bootstrap → java → game) se va creando.
+    const gamePid = launcher.getGamePid();
+    if (gamePid) {
+      for (const delay of [2000, 6000, 15000, 30000]) {
+        setTimeout(() => clearEfficiencyMode(gamePid), delay);
+      }
+    }
+
     return { ok: true };
   } catch (err) {
     log(`[Launch] ERROR: ${err.message}\n${err.stack}`);
