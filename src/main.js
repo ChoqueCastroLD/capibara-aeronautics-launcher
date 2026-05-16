@@ -148,13 +148,15 @@ function applyGpuPreference(javaPath, gpuPref) {
 
 ipcMain.handle('gpu:detect', async () => {
   try {
-    const out = execSync('wmic path win32_VideoController get name /format:value', { encoding: 'utf8', timeout: 5000 });
+    const out = execSync(
+      'powershell -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_VideoController).Name"',
+      { encoding: 'utf8', timeout: 5000, windowsHide: true }
+    );
     return out
       .split('\n')
       .map(l => l.trim())
-      .filter(l => l.startsWith('Name=') && l.length > 5)
-      .map(l => {
-        const name = l.slice(5).trim();
+      .filter(l => l.length > 2)
+      .map(name => {
         const lower = name.toLowerCase();
         const isIntegrated = lower.includes('intel') || lower.includes('integrated')
           || lower.includes('radeon graphics') || lower.includes('vega')

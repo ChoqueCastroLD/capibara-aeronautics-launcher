@@ -25,6 +25,7 @@
     "directories": {
       "output": "dist"
     },
+    "compression": "store",
     "files": [
       "src/**/*",
       "resources/logo.png"

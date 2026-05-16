@@ -69,41 +69,44 @@ async function init() {
   window.addEventListener('online', () => { isOnline = true; updateUI(); refreshServerStatus(); });
   window.addEventListener('offline', () => { isOnline = false; updateUI(); });
 
-  await detectJava();
-
-  const gpus = await window.api.detectGpus();
-  gpuSelect.innerHTML = '';
-  const dedicated = gpus.filter(g => g.type === 'dedicated');
-  const integrated = gpus.filter(g => g.type === 'integrated');
-  if (dedicated.length > 0) {
-    dedicated.forEach(g => {
-      const opt = document.createElement('option');
-      opt.value = '2';
-      opt.textContent = g.name;
-      gpuSelect.appendChild(opt);
-    });
-  } else {
-    const opt = document.createElement('option'); opt.value = '2'; opt.textContent = 'Dedicada (alto rendimiento)'; gpuSelect.appendChild(opt);
-  }
-  if (integrated.length > 0) {
-    integrated.forEach(g => {
-      const opt = document.createElement('option');
-      opt.value = '1';
-      opt.textContent = g.name;
-      gpuSelect.appendChild(opt);
-    });
-  } else {
-    const opt = document.createElement('option'); opt.value = '1'; opt.textContent = 'Integrada (ahorro energía)'; gpuSelect.appendChild(opt);
-  }
-  const autoOpt = document.createElement('option'); autoOpt.value = '0'; autoOpt.textContent = 'Automático (sistema)'; gpuSelect.appendChild(autoOpt);
-  gpuSelect.value = String(state.gpuPref ?? 2);
+  // UI interactiva de inmediato; las detecciones corren en paralelo y
+  // actualizan su sección al terminar (no bloquean el arranque).
+  updateUI();
 
   gpuSelect.addEventListener('change', () => {
     window.api.saveState({ gpuPref: parseInt(gpuSelect.value) });
     flashGpuSaved();
   });
 
-  updateUI();
+  detectJava().then(updateUI);
+
+  window.api.detectGpus().then((gpus) => {
+    gpuSelect.innerHTML = '';
+    const dedicated = gpus.filter(g => g.type === 'dedicated');
+    const integrated = gpus.filter(g => g.type === 'integrated');
+    if (dedicated.length > 0) {
+      dedicated.forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = '2';
+        opt.textContent = g.name;
+        gpuSelect.appendChild(opt);
+      });
+    } else {
+      const opt = document.createElement('option'); opt.value = '2'; opt.textContent = 'Dedicada (alto rendimiento)'; gpuSelect.appendChild(opt);
+    }
+    if (integrated.length > 0) {
+      integrated.forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = '1';
+        opt.textContent = g.name;
+        gpuSelect.appendChild(opt);
+      });
+    } else {
+      const opt = document.createElement('option'); opt.value = '1'; opt.textContent = 'Integrada (ahorro energía)'; gpuSelect.appendChild(opt);
+    }
+    const autoOpt = document.createElement('option'); autoOpt.value = '0'; autoOpt.textContent = 'Automático (sistema)'; gpuSelect.appendChild(autoOpt);
+    gpuSelect.value = String(state.gpuPref ?? 2);
+  });
 
   // Pre-cargar Steve al caché (sin tocar la skin actual)
   prefetchSteve();
