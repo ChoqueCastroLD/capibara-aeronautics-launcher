@@ -289,10 +289,15 @@ ipcMain.handle('gpu:detect', async () => {
 ipcMain.handle('java:detect', async () => javaManager.detectAll());
 
 ipcMain.handle('java:download', async () => {
-  return await javaManager.downloadTemurin21((progress) => {
-    log(`[Java] ${progress.phase} ${progress.percent}%`);
-    mainWindow.webContents.send('java:progress', progress);
-  });
+  try {
+    return await javaManager.downloadTemurin21((progress) => {
+      log(`[Java] ${progress.phase} ${progress.percent}%`);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('java:progress', progress);
+    });
+  } catch (e) {
+    log(`[Java] ERROR: ${e.message}`);
+    return null;
+  }
 });
 
 ipcMain.handle('java:browse', async () => {

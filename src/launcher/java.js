@@ -83,22 +83,18 @@ async function detectAll() {
   });
 }
 
-async function downloadTemurin21(onProgress) {
+async function downloadAndExtractTemurin(onProgress) {
   const url =
     'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse';
-
-  onProgress({ phase: 'Descargando Java 21 (Temurin)...', percent: 0 });
-
   const zipPath = path.join(os.tmpdir(), 'temurin21.zip');
 
+  try { fs.unlinkSync(zipPath); } catch {}
   await downloadFile(url, zipPath, (received, total) => {
     if (total) onProgress({ phase: 'Descargando Java 21...', percent: Math.round((received / total) * 80) });
-  });
+  }, { stallTimeoutMs: 30000, maxRetries: 3 });
 
   onProgress({ phase: 'Extrayendo Java...', percent: 82 });
 
-  // Extraer con node-stream-zip (sin PowerShell: Expand-Archive se cuelga
-  // con miles de archivos / antivirus escaneando).
   const tmpExtract = path.join(os.tmpdir(), 'temurin21-extract');
   if (fs.existsSync(tmpExtract)) fs.rmSync(tmpExtract, { recursive: true });
   fs.mkdirSync(tmpExtract, { recursive: true });
@@ -109,14 +105,13 @@ async function downloadTemurin21(onProgress) {
   zip.on('extract', () => {
     doneEntries++;
     if (totalEntries) {
-      const pct = 82 + Math.round((doneEntries / totalEntries) * 16); // 82 → 98
+      const pct = 82 + Math.round((doneEntries / totalEntries) * 16);
       onProgress({ phase: 'Extrayendo Java...', percent: Math.min(pct, 98) });
     }
   });
   await zip.extract(null, tmpExtract);
   await zip.close();
 
-  // Mover el directorio interno (jdk-21.x.x-jre) a JAVA_DIR
   const entries = fs.readdirSync(tmpExtract);
   if (entries.length > 0) {
     const src = path.join(tmpExtract, entries[0]);
@@ -124,15 +119,32 @@ async function downloadTemurin21(onProgress) {
     fs.renameSync(src, JAVA_DIR);
   }
 
-  // Limpiar temporales
   try { fs.unlinkSync(zipPath); } catch {}
   try { fs.rmSync(tmpExtract, { recursive: true }); } catch {}
 
-  onProgress({ phase: 'Java listo', percent: 100 });
-
+  // Validar que el Java extraído realmente ejecuta (zip corrupto / AV).
   const javaExe = path.join(JAVA_DIR, 'bin', 'java.exe');
   const version = await getVersion(javaExe);
+  if (!version) throw new Error('El Java descargado no se ejecuta (descarga corrupta o bloqueada por antivirus)');
   return { path: javaExe, version, major: 21, label: 'Java 21 (descargado por launcher)' };
+}
+
+async function downloadTemurin21(onProgress) {
+  onProgress({ phase: 'Descargando Java 21 (Temurin)...', percent: 0 });
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await downloadAndExtractTemurin(onProgress);
+      onProgress({ phase: 'Java listo', percent: 100 });
+      return result;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[Java] Intento ${attempt}/3 falló: ${e.message}`);
+      try { fs.rmSync(JAVA_DIR, { recursive: true }); } catch {}
+      if (attempt < 3) onProgress({ phase: `Reintentando descarga de Java (${attempt + 1}/3)...`, percent: 0 });
+    }
+  }
+  throw lastErr || new Error('No se pudo descargar Java tras 3 intentos');
 }
 
 module.exports = { detectAll, downloadTemurin21, getVersion };
