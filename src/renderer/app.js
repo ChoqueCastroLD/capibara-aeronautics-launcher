@@ -602,13 +602,19 @@ function updateUI() {
     btnPlay.className = 'play-btn offline';
     btnPlay.disabled = true;
   } else if (!state.installed) {
-    btnPlay.textContent = 'INSTALAR';
     btnPlay.className = 'play-btn install';
     btnPlay.disabled = !ready;
+    if (ready) btnPlay.textContent = 'INSTALAR';
+    else if (!hasJava) btnPlay.textContent = 'FALTA JAVA 21';
+    else if (!hasUsername) btnPlay.textContent = 'ESCRIBE TU USUARIO';
+    else btnPlay.textContent = 'INSTALAR';
   } else {
-    btnPlay.textContent = 'JUGAR';
     btnPlay.className = 'play-btn';
     btnPlay.disabled = !ready;
+    if (ready) btnPlay.textContent = 'JUGAR';
+    else if (!hasJava) btnPlay.textContent = 'FALTA JAVA 21';
+    else if (!hasUsername) btnPlay.textContent = 'ESCRIBE TU USUARIO';
+    else btnPlay.textContent = 'JUGAR';
   }
 
   if (state.installed) {
