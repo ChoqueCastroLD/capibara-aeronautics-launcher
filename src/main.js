@@ -67,14 +67,26 @@ function createTray() {
 const LOG_FILE = path.join(app.getPath('appData'), 'CapibaraAeronautics', 'launcher.log');
 const logLines = [];
 
+// Escritura por lotes: cuando el juego crashea vuelca miles de líneas;
+// escribir sync por línea congelaba/mataba el launcher.
+let logPending = '';
+let logFlushTimer = null;
+function flushLog() {
+  if (!logPending) return;
+  const chunk = logPending;
+  logPending = '';
+  try {
+    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+    fs.appendFile(LOG_FILE, chunk, () => {});
+  } catch {}
+}
 function log(line) {
   const entry = `[${new Date().toISOString()}] ${line}`;
   logLines.push(entry);
   if (logLines.length > 2000) logLines.shift();
-  try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    fs.appendFileSync(LOG_FILE, entry + '\n');
-  } catch {}
+  logPending += entry + '\n';
+  if (logPending.length > 64 * 1024) flushLog();
+  else if (!logFlushTimer) logFlushTimer = setTimeout(() => { logFlushTimer = null; flushLog(); }, 400);
 }
 
 const MAP_W = 440;
@@ -136,7 +148,12 @@ if (!gotLock) {
   });
 }
 app.on('window-all-closed', () => { if (isQuitting) app.quit(); });
-app.on('before-quit', () => { isQuitting = true; });
+app.on('before-quit', () => {
+  isQuitting = true;
+  // El juego depende del launcher: al salir de verdad, cerrar el juego también.
+  try { launcher.killGame(); } catch {}
+  flushLog();
+});
 
 // ── Captura de crashes del launcher ───────────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -408,16 +425,16 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
       {
         onData: (line) => {
           log(`[Game] ${line.trim()}`);
-          mainWindow.webContents.send('game:log', line);
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('game:log', line);
         },
         onClose: (code) => {
           log(`[Game] Proceso cerrado con código ${code}`);
           discord.setIdle().catch(() => {});
-          mainWindow.webContents.send('game:closed', code);
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('game:closed', code);
           showLauncher();
         },
         onProgress: (progress) => {
-          mainWindow.webContents.send('install:progress', progress);
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('install:progress', progress);
         },
       }
     );

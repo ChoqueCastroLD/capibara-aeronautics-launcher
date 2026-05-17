@@ -218,7 +218,15 @@ let currentProcess = null;
 
 function killGame() {
 	if (currentProcess && !currentProcess.killed) {
+		const pid = currentProcess.pid;
 		try { currentProcess.kill('SIGKILL'); } catch {}
+		// En Windows el árbol de Java (bootstrap → javaw) no muere con
+		// SIGKILL al padre; taskkill /T /F termina todo el árbol.
+		if (process.platform === 'win32' && pid) {
+			try {
+				require('child_process').execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => {});
+			} catch {}
+		}
 		currentProcess = null;
 		return true;
 	}
