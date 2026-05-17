@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { app } = require('electron');
+const StreamZip = require('node-stream-zip');
 const { downloadFile } = require('./download');
 
 const JAVA_DIR = path.join(app.getPath('userData'), 'java');
@@ -96,18 +97,24 @@ async function downloadTemurin21(onProgress) {
 
   onProgress({ phase: 'Extrayendo Java...', percent: 82 });
 
-  // Extraer zip con PowerShell (no necesitamos dep externa)
-  const { execSync } = require('child_process');
-  fs.mkdirSync(JAVA_DIR, { recursive: true });
-
-  // Primero extraer a un temp dir y luego mover el contenido
+  // Extraer con node-stream-zip (sin PowerShell: Expand-Archive se cuelga
+  // con miles de archivos / antivirus escaneando).
   const tmpExtract = path.join(os.tmpdir(), 'temurin21-extract');
   if (fs.existsSync(tmpExtract)) fs.rmSync(tmpExtract, { recursive: true });
+  fs.mkdirSync(tmpExtract, { recursive: true });
 
-  execSync(
-    `powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${tmpExtract}' -Force"`,
-    { timeout: 120000 }
-  );
+  const zip = new StreamZip.async({ file: zipPath });
+  const totalEntries = await zip.entriesCount;
+  let doneEntries = 0;
+  zip.on('extract', () => {
+    doneEntries++;
+    if (totalEntries) {
+      const pct = 82 + Math.round((doneEntries / totalEntries) * 16); // 82 → 98
+      onProgress({ phase: 'Extrayendo Java...', percent: Math.min(pct, 98) });
+    }
+  });
+  await zip.extract(null, tmpExtract);
+  await zip.close();
 
   // Mover el directorio interno (jdk-21.x.x-jre) a JAVA_DIR
   const entries = fs.readdirSync(tmpExtract);
