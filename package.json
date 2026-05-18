@@ -1,6 +1,6 @@
 {
   "name": "capibara-aeronautics-launcher",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "Launcher para Capibara Aeronautics SMP",
   "main": "src/main.js",
   "scripts": {

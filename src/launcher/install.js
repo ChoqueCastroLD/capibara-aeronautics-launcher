@@ -240,6 +240,29 @@ async function verifyAndRepairMods(send) {
       }
     }
 
+    // Mods provistos por overrides/mods/ del mrpack: también son esperados.
+    // Si no se cuentan, el barrido de abajo los borra (no están en files[])
+    // y queda una instalación incompleta → crash de carga. Además los
+    // restauramos si faltan o cambiaron de tamaño.
+    const entries = await zip.entries();
+    for (const name of Object.keys(entries)) {
+      const e = entries[name];
+      if (e.isDirectory) continue;
+      if (!name.startsWith('overrides/mods/') || !name.endsWith('.jar')) continue;
+      const base = path.basename(name);
+      if (isServerOnlyMod(base)) continue;
+      expectedMods.add(base);
+      const dest = path.join(GAME_DIR, name.replace(/^overrides\//, ''));
+      let ok = false;
+      try { ok = fs.statSync(dest).size === e.size; } catch {}
+      if (!ok) {
+        send(`Reparando modpack... ${base}`, 41);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        try { fs.writeFileSync(dest, await zip.entryData(name)); repaired++; }
+        catch (er) { console.warn(`[VerifyMods] override ${base}: ${er.message}`); }
+      }
+    }
+
     // Borrar mods que sobran (instalación vieja con mods que ya no van).
     const modsDir = path.join(GAME_DIR, 'mods');
     try {
