@@ -2,9 +2,47 @@ const { execFile, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const https = require('https');
+const crypto = require('crypto');
 const { app } = require('electron');
 const StreamZip = require('node-stream-zip');
 const { downloadFile } = require('./download');
+
+// Metadata oficial de Adoptium: build exacto + checksum SHA256.
+function fetchAdoptiumAsset(redirects = 0, url) {
+  const api = url || 'https://api.adoptium.net/v3/assets/feature_releases/21/ga'
+    + '?architecture=x64&image_type=jre&jvm_impl=hotspot&os=windows&vendor=eclipse&page_size=1';
+  return new Promise((resolve, reject) => {
+    if (redirects > 5) return reject(new Error('Demasiados redirects'));
+    https.get(api, { timeout: 12000, headers: { 'User-Agent': 'CapibaraLauncher/1.0' } }, (res) => {
+      if ([301, 302, 307, 308].includes(res.statusCode)) {
+        res.resume();
+        return resolve(fetchAdoptiumAsset(redirects + 1, res.headers.location));
+      }
+      if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode} (Adoptium API)`));
+      let data = '';
+      res.on('data', (c) => data += c);
+      res.on('end', () => {
+        try {
+          const arr = JSON.parse(data);
+          const pkg = arr?.[0]?.binaries?.[0]?.package;
+          if (!pkg?.link || !pkg?.checksum) return reject(new Error('Respuesta de Adoptium sin link/checksum'));
+          resolve({ link: pkg.link, checksum: pkg.checksum.toLowerCase() });
+        } catch { reject(new Error('JSON inválido de Adoptium API')); }
+      });
+    }).on('error', reject).on('timeout', () => reject(new Error('Timeout API Adoptium')));
+  });
+}
+
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    const s = fs.createReadStream(file);
+    s.on('data', (d) => h.update(d));
+    s.on('end', () => resolve(h.digest('hex')));
+    s.on('error', reject);
+  });
+}
 
 const JAVA_DIR = path.join(app.getPath('userData'), 'java');
 
@@ -84,14 +122,33 @@ async function detectAll() {
 }
 
 async function downloadAndExtractTemurin(onProgress) {
-  const url =
-    'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse';
   const zipPath = path.join(os.tmpdir(), 'temurin21.zip');
 
+  // Build exacto + checksum oficial (como Modrinth). Fallback al endpoint
+  // "latest" si la API de assets no responde.
+  let link, checksum;
+  try {
+    ({ link, checksum } = await fetchAdoptiumAsset());
+  } catch (e) {
+    console.warn(`[Java] API de Adoptium falló (${e.message}); usando endpoint latest sin checksum`);
+    link = 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse';
+    checksum = null;
+  }
+
   try { fs.unlinkSync(zipPath); } catch {}
-  await downloadFile(url, zipPath, (received, total) => {
+  await downloadFile(link, zipPath, (received, total) => {
     if (total) onProgress({ phase: 'Descargando Java 21...', percent: Math.round((received / total) * 80) });
   }, { stallTimeoutMs: 30000, maxRetries: 3 });
+
+  // Verificar integridad ANTES de extraer (atrapa corrupción de antivirus/red).
+  if (checksum) {
+    onProgress({ phase: 'Verificando integridad...', percent: 81 });
+    const got = await sha256File(zipPath);
+    if (got.toLowerCase() !== checksum) {
+      try { fs.unlinkSync(zipPath); } catch {}
+      throw new Error(`Checksum del Java no coincide (descarga corrupta: ${got.slice(0, 12)}… ≠ ${checksum.slice(0, 12)}…)`);
+    }
+  }
 
   onProgress({ phase: 'Extrayendo Java...', percent: 82 });
 
