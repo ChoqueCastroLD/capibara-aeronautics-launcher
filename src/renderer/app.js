@@ -4,6 +4,7 @@ let isInstalling = false;
 let gameRunning = false;
 let isDownloadingJava = false;
 let isOnline = navigator.onLine;
+let updateAvailable = false;
 let serverDesyncDetected = false;
 
 const $ = (id) => document.getElementById(id);
@@ -130,6 +131,7 @@ async function init() {
   if (state.installed) {
     window.api.checkForUpdates().then((result) => {
       if (result.hasUpdate) {
+        updateAvailable = true;
         const banner = $('update-banner');
         $('update-text').textContent = `Nueva versión disponible — v${result.latest.version}`;
         banner.classList.remove('hidden');
@@ -139,6 +141,7 @@ async function init() {
           banner.dataset.changelog = result.latest.changelog;
           $('btn-changelog').classList.remove('hidden');
         }
+        updateUI();
       }
     }).catch(() => {});
   }
@@ -573,6 +576,7 @@ $('btn-update').addEventListener('click', async () => {
   if (result.ok) {
     state.installed = true;
     state.installedVersion = newVersion;
+    updateAvailable = false;
     progressLabel.textContent = `✓ ¡Actualización a v${newVersion} completada!`;
     setTimeout(() => progressWrap.classList.add('hidden'), 3000);
   } else {
@@ -638,6 +642,12 @@ function updateUI() {
     else if (!hasJava) btnPlay.textContent = 'FALTA JAVA 21';
     else if (!hasUsername) btnPlay.textContent = 'ESCRIBE TU USUARIO';
     else btnPlay.textContent = 'INSTALAR';
+  } else if (updateAvailable) {
+    // El servidor siempre corre la última versión: no tiene sentido
+    // dejar jugar en una versión vieja del modpack. Forzar actualizar.
+    btnPlay.textContent = 'ACTUALIZA PRIMERO';
+    btnPlay.className = 'play-btn offline';
+    btnPlay.disabled = true;
   } else {
     btnPlay.className = 'play-btn';
     btnPlay.disabled = !ready;
