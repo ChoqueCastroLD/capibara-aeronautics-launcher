@@ -135,20 +135,30 @@ function cmpVersion(a, b) {
 }
 
 const MY_VERSION = app.getVersion();
+// Guard por archivo (el env no sobrevive el relaunch del .exe portable,
+// causaba un loop de relaunch que robaba foco cada ~5s).
+const TAKEOVER_FLAG = path.join(os.tmpdir(), 'capibara-takeover.flag');
 const gotLock = app.requestSingleInstanceLock({ version: MY_VERSION });
 if (!gotLock) {
-  // Somos una segunda instancia. Ya le mandamos nuestra versión a la que
-  // está corriendo. Si somos MÁS NUEVA, la vieja se va a cerrar; esperamos
-  // y relanzamos UNA vez para tomar el lock ya libre. Si no, salimos.
-  if (process.env.CAPIBARA_TAKEOVER === '1') {
+  // Segunda instancia. Ya mandamos la versión a la que corre. Relanzamos
+  // UNA sola vez (para tomar el lock si la vieja se cierra por ser más
+  // nueva). El flag con timestamp evita el loop infinito de relaunch.
+  let recentlyTried = false;
+  try {
+    const st = fs.statSync(TAKEOVER_FLAG);
+    if (Date.now() - st.mtimeMs < 20000) recentlyTried = true;
+  } catch {}
+  if (recentlyTried) {
     app.quit();
   } else {
+    try { fs.writeFileSync(TAKEOVER_FLAG, String(Date.now())); } catch {}
     setTimeout(() => {
-      app.relaunch({ env: { ...process.env, CAPIBARA_TAKEOVER: '1' } });
+      app.relaunch();
       app.exit(0);
     }, 2500);
   }
 } else {
+  try { fs.unlinkSync(TAKEOVER_FLAG); } catch {}
   app.on('second-instance', (_e, _argv, _cwd, additionalData) => {
     const incoming = additionalData && additionalData.version;
     if (incoming && cmpVersion(incoming, MY_VERSION) > 0) {
