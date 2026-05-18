@@ -101,6 +101,7 @@ function createWindow() {
     minHeight: WIN_H,
     frame: false,
     resizable: true,
+    title: `Capibara Aeronautics Launcher v${app.getVersion()}`,
     icon: path.join(__dirname, '..', 'resources', 'icon.ico'),
     backgroundColor: '#0f1117',
     webPreferences: {
@@ -121,11 +122,43 @@ function createWindow() {
 }
 
 // Una sola instancia: si se abre de nuevo, enfoca la ya existente.
-const gotLock = app.requestSingleInstanceLock();
+// Compara versiones tipo "1.0.17" -> 1 si a>b, -1 si a<b, 0 igual.
+function cmpVersion(a, b) {
+  const pa = String(a || '0').split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b || '0').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+const MY_VERSION = app.getVersion();
+const gotLock = app.requestSingleInstanceLock({ version: MY_VERSION });
 if (!gotLock) {
-  app.quit();
+  // Somos una segunda instancia. Ya le mandamos nuestra versión a la que
+  // está corriendo. Si somos MÁS NUEVA, la vieja se va a cerrar; esperamos
+  // y relanzamos UNA vez para tomar el lock ya libre. Si no, salimos.
+  if (process.env.CAPIBARA_TAKEOVER === '1') {
+    app.quit();
+  } else {
+    setTimeout(() => {
+      app.relaunch({ env: { ...process.env, CAPIBARA_TAKEOVER: '1' } });
+      app.exit(0);
+    }, 2500);
+  }
 } else {
-  app.on('second-instance', () => showLauncher());
+  app.on('second-instance', (_e, _argv, _cwd, additionalData) => {
+    const incoming = additionalData && additionalData.version;
+    if (incoming && cmpVersion(incoming, MY_VERSION) > 0) {
+      // Llegó una versión más nueva: cerramos esta (vieja) para cederle el paso.
+      log(`[Instance] Versión más nueva detectada (${incoming} > ${MY_VERSION}); cerrando esta instancia`);
+      isQuitting = true;
+      app.quit();
+    } else {
+      showLauncher();
+    }
+  });
 
   app.whenReady().then(() => {
     try {
@@ -234,6 +267,7 @@ ipcMain.handle('skin:get', async (_e, username) => {
 
 // ── Sistema ───────────────────────────────────────────────────────────────────
 ipcMain.handle('system:totalRamGB', () => Math.round(os.totalmem() / (1024 ** 3)));
+ipcMain.handle('app:version', () => app.getVersion());
 
 // ── Estado ────────────────────────────────────────────────────────────────────
 ipcMain.handle('state:get', () => state.load());

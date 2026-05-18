@@ -55,6 +55,12 @@ $('btn-toggle-theme').addEventListener('click', () => {
 
 // ── Init ──────────────────────────────────────────────────────────────────
 async function init() {
+  window.api.getAppVersion().then((v) => {
+    const t = `Capibara Aeronautics Launcher v${v}`;
+    $('titlebar-title').textContent = t;
+    document.title = t;
+  }).catch(() => {});
+
   state = await window.api.getState();
   if (state.username) usernameInput.value = state.username;
   refreshSkin();
