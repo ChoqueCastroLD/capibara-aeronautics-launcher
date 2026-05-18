@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Tray, Menu, power
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const os = require('os');
 const axios = require('axios');
 
@@ -236,6 +237,20 @@ function pruneSkinCache() {
   } catch {}
 }
 
+// Hash del head "Steve por defecto" que mc-heads devuelve para nombres
+// desconocidos. Se obtiene 1 vez pidiendo un nombre imposible.
+let defaultSteveHash = null;
+async function getDefaultSteveHash() {
+  if (defaultSteveHash) return defaultSteveHash;
+  try {
+    const res = await axios.get('https://mc-heads.net/head/0000000000000000000000000000000000000000/96', {
+      responseType: 'arraybuffer', timeout: 8000,
+    });
+    defaultSteveHash = crypto.createHash('sha1').update(Buffer.from(res.data)).digest('hex');
+  } catch {}
+  return defaultSteveHash;
+}
+
 ipcMain.handle('skin:get', async (_e, username) => {
   if (!username || !/^[a-zA-Z0-9_]{3,16}$/.test(username)) return null;
   const safe = username.toLowerCase();
@@ -243,7 +258,12 @@ ipcMain.handle('skin:get', async (_e, username) => {
   try {
     const st = fs.statSync(file);
     if (Date.now() - st.mtimeMs < SKIN_TTL_MS && st.size > 0) {
-      return file;
+      // Auto-sanar caché envenenado: si el archivo cacheado es el Steve
+      // por defecto, lo descartamos y volvemos a pedir.
+      const steve = await getDefaultSteveHash();
+      const cachedHash = crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex');
+      if (!steve || cachedHash !== steve) return file;
+      try { fs.unlinkSync(file); } catch {}
     }
   } catch {}
   try {
@@ -252,7 +272,17 @@ ipcMain.handle('skin:get', async (_e, username) => {
       responseType: 'arraybuffer',
       timeout: 8000,
     });
-    fs.writeFileSync(file, Buffer.from(res.data));
+    const buf = Buffer.from(res.data);
+    // Si es el Steve por defecto (nombre no premium o aún sin resolver),
+    // NO lo cacheamos: así no envenena 24h y el premium aparece apenas
+    // mc-heads lo tenga. El renderer mostrará el Steve genérico igual.
+    const hash = crypto.createHash('sha1').update(buf).digest('hex');
+    const steve = await getDefaultSteveHash();
+    if (steve && hash === steve) {
+      try { fs.unlinkSync(file); } catch {}
+      return null;
+    }
+    fs.writeFileSync(file, buf);
     pruneSkinCache();
     return file;
   } catch (err) {
