@@ -4,6 +4,7 @@ let isInstalling = false;
 let gameRunning = false;
 let isDownloadingJava = false;
 let isOnline = navigator.onLine;
+let serverDesyncDetected = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -155,14 +156,29 @@ async function init() {
     }
   });
 
+  // Detectar crash por modpack desincronizado con el servidor.
+  window.api.onGameLog((line) => {
+    if (/No value with id \d|Connector locator error|ModuleLayerMigrator|IdDispatchCodec/.test(line)) {
+      serverDesyncDetected = true;
+    }
+  });
+
   window.api.onGameClosed((code) => {
     gameRunning = false;
     progressWrap.classList.add('hidden');
     updateUI();
     if (code !== 0) {
-      $('crash-msg').innerHTML = `El juego se cerró inesperadamente (código ${code}). Para que podamos ayudarte, copia o abre el log y envíalo por el canal <strong>#soporte</strong> del Discord.`;
+      if (serverDesyncDetected) {
+        $('crash-msg').innerHTML = `<strong>Tu modpack no coincide con el servidor.</strong><br>`
+          + `Tu versión del modpack está desactualizada respecto al servidor. `
+          + `Dale a <strong>Desinstalar</strong> y luego <strong>Instalar</strong> para descargar la versión correcta.<br><br>`
+          + `Si sigue pasando tras reinstalar, avisá en <strong>#soporte</strong> del Discord (copiá el log).`;
+      } else {
+        $('crash-msg').innerHTML = `El juego se cerró inesperadamente (código ${code}). Para que podamos ayudarte, copia o abre el log y envíalo por el canal <strong>#soporte</strong> del Discord.`;
+      }
       $('crash-overlay').classList.remove('hidden');
     }
+    serverDesyncDetected = false;
   });
 }
 
@@ -363,6 +379,7 @@ btnPlay.addEventListener('click', async () => {
   } else {
     // Jugar
     gameRunning = true;
+    serverDesyncDetected = false;
     updateUI();
 
     const result = await window.api.launchGame({ username, javaPath, ram, gpuPref: parseInt(gpuSelect.value) });

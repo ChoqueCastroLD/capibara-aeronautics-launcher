@@ -266,6 +266,24 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
 
   send(`Descargando ${files.length} mods...`, 42);
   let downloaded = 0;
+  const failedMods = [];
+
+  // Descarga + verificación de hash (como Modrinth). El modrinth.index.json
+  // trae sha512/sha1 por archivo; si no coincide, reintenta. Esto evita
+  // instalaciones "OK" con mods corruptos que crashean el juego.
+  const downloadVerified = async (url, dest, hashes) => {
+    const want = hashes && (hashes.sha512 || hashes.sha1);
+    const algo = hashes && hashes.sha512 ? 'sha512' : 'sha1';
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await downloadFile(url, dest, null);
+      if (!want) return true; // sin hash en el índice: no se puede verificar
+      const got = crypto.createHash(algo).update(fs.readFileSync(dest)).digest('hex');
+      if (got.toLowerCase() === String(want).toLowerCase()) return true;
+      console.warn(`[Install] Hash incorrecto ${path.basename(dest)} intento ${attempt}/3`);
+      try { fs.unlinkSync(dest); } catch {}
+    }
+    return false;
+  };
 
   // Descargar mods en paralelo (lotes de 8)
   const BATCH = 8;
@@ -277,13 +295,23 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
       const dest = path.join(GAME_DIR, file.path.replace(/^overrides\//, ''));
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       try {
-        await downloadFile(url, dest, null);
+        const ok = await downloadVerified(url, dest, file.hashes);
+        if (!ok) failedMods.push(fileName);
       } catch (err) {
         console.error(`Error descargando ${fileName}:`, err.message);
+        failedMods.push(fileName);
       }
       downloaded++;
       send(`Descargando mods (${downloaded}/${files.length})...`, 42 + (downloaded / files.length) * 45);
     }));
+  }
+
+  if (failedMods.length > 0) {
+    throw new Error(
+      `${failedMods.length} mod(s) no se descargaron correctamente (hash inválido o sin conexión): `
+      + failedMods.slice(0, 5).join(', ') + (failedMods.length > 5 ? '…' : '')
+      + '. Revisa tu conexión/antivirus e intenta instalar de nuevo.'
+    );
   }
 
   // ── 4. Extraer overrides ──────────────────────────────────────────────────
