@@ -392,12 +392,21 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
     (e) => e.startsWith('overrides/') && !entries[e].isDirectory
   );
 
+  const totalOv = overrideEntries.length || 1;
+  let ovDone = 0;
+  let lastPct = -1;
   for (const entry of overrideEntries) {
     const relPath = entry.replace(/^overrides\//, '');
     const dest = path.join(GAME_DIR, relPath);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const data = await zip.entryData(entry);
     fs.writeFileSync(dest, data);
+    ovDone++;
+    const pct = 89 + Math.round((ovDone / totalOv) * 10); // 89 → 99
+    if (pct !== lastPct) {
+      lastPct = pct;
+      send(`Extrayendo configuración (${ovDone}/${totalOv})...`, pct);
+    }
   }
 
   await zip.close();
