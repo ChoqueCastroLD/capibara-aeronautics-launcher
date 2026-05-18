@@ -484,6 +484,24 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
     applyGpuPreference(javaPath, gpuPref ?? 2);
     log(`[GPU] Preferencia aplicada: ${gpuPref ?? 2}`);
 
+    // Si el client patcheado de NeoForge (srg/extra) está corrupto o a 0 bytes,
+    // el juego crashea con "NoSuchElementException: No value present" en
+    // BootstrapLauncher. Lo regeneramos reejecutando el instalador de NeoForge
+    // (único que produce esos jars) sin reinstalar todo el modpack.
+    try {
+      const reinstalled = await installer.ensureNeoForgeClient({
+        javaPath,
+        send: (message, percent) => {
+          log(`[Launch] ${message}`);
+          if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.webContents.send('install:progress', { message, percent });
+        },
+      });
+      if (reinstalled) log('[Launch] Client de NeoForge regenerado (estaba incompleto/corrupto)');
+    } catch (e) {
+      log(`[Launch] No se pudo regenerar el client de NeoForge: ${e.message}`);
+    }
+
     // Auto-reparar librerías vanilla/NeoForge faltantes (instalaciones viejas
     // incompletas) sin requerir reinstalación manual.
     try {

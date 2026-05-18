@@ -20,6 +20,29 @@ const CLIENT_SRG_PATH = path.join(
   `${MC_VERSION}-${NEOFORM_VERSION}`,
   `client-${MC_VERSION}-${NEOFORM_VERSION}-srg.jar`
 );
+const CLIENT_EXTRA_PATH = path.join(
+  MC_DIR, 'libraries', 'net', 'minecraft', 'client',
+  `${MC_VERSION}-${NEOFORM_VERSION}`,
+  `client-${MC_VERSION}-${NEOFORM_VERSION}-extra.jar`
+);
+
+// Los procesadores del instalador de NeoForge generan client-srg.jar y
+// client-extra.jar localmente (no tienen URL de descarga). Si el proceso se
+// interrumpe (antivirus, red, disco) quedan en 0 bytes o truncados: el
+// versionJson existe → isInstalled() pasa → pero al lanzar, el module finder
+// de FML no resuelve el módulo `minecraft` y BootstrapLauncher crashea con
+// "java.util.NoSuchElementException: No value present". Exigimos tamaño
+// mínimo razonable (ambos son de varios MB) para detectar corrupción.
+function clientPatchedOk() {
+  for (const p of [CLIENT_SRG_PATH, CLIENT_EXTRA_PATH]) {
+    try {
+      if (fs.statSync(p).size < 1_000_000) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
 
 function getGameDir() { return GAME_DIR; }
 
@@ -221,11 +244,58 @@ function isInstalled() {
   const modsDir = path.join(GAME_DIR, 'mods');
   return (
     fs.existsSync(versionJson) &&
-    fs.existsSync(CLIENT_SRG_PATH) &&
+    clientPatchedOk() &&
     fs.existsSync(modsDir) &&
     fs.readdirSync(modsDir).length > 0 &&
     !!findLwjglJar()
   );
+}
+
+// Garantiza un client patcheado de NeoForge íntegro (srg + extra). Se usa en
+// la instalación y también antes de lanzar (auto-reparación sin reinstalar
+// todo). Reejecuta el instalador de NeoForge —único que regenera estos jars—
+// hasta 3 veces, validando por tamaño y no solo por existencia.
+async function ensureNeoForgeClient({ javaPath, send }) {
+  const versionJson = path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.json`);
+  if (fs.existsSync(versionJson) && clientPatchedOk()) return false;
+
+  const installerJar = path.join(os.tmpdir(), `neoforge-${NEOFORGE_VERSION}-installer.jar`);
+  if (!fs.existsSync(installerJar)) {
+    send('Descargando NeoForge installer...', 2);
+    await downloadFile(NEOFORGE_INSTALLER_URL, installerJar, (r, t) => {
+      send('Descargando NeoForge installer...', 2 + (r / t) * 18);
+    });
+  }
+  send('NeoForge installer descargado', 20);
+
+  // Borrar jars patcheados truncados/corruptos para que un parcial no engañe.
+  for (const p of [CLIENT_SRG_PATH, CLIENT_EXTRA_PATH]) {
+    try { if (fs.statSync(p).size < 1_000_000) fs.unlinkSync(p); } catch {}
+  }
+
+  const MAX_ATTEMPTS = 3;
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    send(`Instalando NeoForge${attempt > 1 ? ` (intento ${attempt}/${MAX_ATTEMPTS})` : ''}...`, 21);
+    const ok = await new Promise((resolve) => {
+      const proc = execFile(
+        javaPath,
+        ['-Djava.awt.headless=true', '-Xmx2G', '-jar', installerJar, '--installClient'],
+        { timeout: 900000, cwd: MC_DIR }
+      );
+      proc.stdout?.on('data', (d) => console.log('[NeoForge]', d.toString().trim()));
+      proc.stderr?.on('data', (d) => console.log('[NeoForge]', d.toString().trim()));
+      proc.on('close', () => resolve(fs.existsSync(versionJson) && clientPatchedOk()));
+      proc.on('error', (e) => { lastError = e; resolve(false); });
+    });
+    if (ok) { send('NeoForge instalado', 38); return true; }
+    if (attempt === MAX_ATTEMPTS) {
+      throw new Error(`NeoForge no se instaló correctamente tras ${MAX_ATTEMPTS} intentos. ${lastError?.message || 'Revisa los logs.'}`);
+    }
+    send(`Reintentando (timeout de red)...`, 21);
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  return true;
 }
 
 async function install({ javaPath, ram, mrpackUrl }, onProgress) {
@@ -247,43 +317,8 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
     }, null, 2));
   }
 
-  // ── 1. Descargar NeoForge installer ─────────────────────────────────────
-  const installerJar = path.join(os.tmpdir(), `neoforge-${NEOFORGE_VERSION}-installer.jar`);
-  if (!fs.existsSync(installerJar)) {
-    send('Descargando NeoForge installer...', 2);
-    await downloadFile(NEOFORGE_INSTALLER_URL, installerJar, (r, t) => {
-      send('Descargando NeoForge installer...', 2 + (r / t) * 18);
-    });
-  }
-  send('NeoForge installer descargado', 20);
-
-  // ── 2. Ejecutar NeoForge installer (con hasta 3 reintentos por timeouts de red) ──
-  const versionJson = path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.json`);
-  if (!fs.existsSync(versionJson) || !fs.existsSync(CLIENT_SRG_PATH)) {
-    const MAX_ATTEMPTS = 3;
-    let lastError;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      send(`Instalando NeoForge${attempt > 1 ? ` (intento ${attempt}/${MAX_ATTEMPTS})` : ''}...`, 21);
-      const ok = await new Promise((resolve) => {
-        const proc = execFile(
-          javaPath,
-          ['-Djava.awt.headless=true', '-Xmx2G', '-jar', installerJar, '--installClient'],
-          { timeout: 900000, cwd: MC_DIR }
-        );
-        proc.stdout?.on('data', (d) => console.log('[NeoForge]', d.toString().trim()));
-        proc.stderr?.on('data', (d) => console.log('[NeoForge]', d.toString().trim()));
-        proc.on('close', () => resolve(fs.existsSync(versionJson) && fs.existsSync(CLIENT_SRG_PATH)));
-        proc.on('error', (e) => { lastError = e; resolve(false); });
-      });
-      if (ok) break;
-      if (attempt === MAX_ATTEMPTS) {
-        throw new Error(`NeoForge no se instaló tras ${MAX_ATTEMPTS} intentos. ${lastError?.message || 'Revisa los logs.'}`);
-      }
-      send(`Reintentando (timeout de red)...`, 21);
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  }
-  send('NeoForge instalado', 38);
+  // ── 1-2. Garantizar NeoForge + client patcheado íntegro ─────────────────
+  await ensureNeoForgeClient({ javaPath, send });
 
   // ── 2.5 Reparar librerías faltantes que NeoForge debió descargar ──────────
   // Algunos usuarios terminan con jars faltantes (antivirus, red flaky, rate
@@ -450,4 +485,4 @@ async function uninstall(onProgress) {
   send('Desinstalado correctamente', 100);
 }
 
-module.exports = { install, uninstall, getGameDir, isInstalled, findLwjglJar, repairMissingLibraries, verifyAndRepairMods, NEOFORGE_VERSION_ID, MC_VERSION };
+module.exports = { install, uninstall, getGameDir, isInstalled, findLwjglJar, repairMissingLibraries, verifyAndRepairMods, ensureNeoForgeClient, NEOFORGE_VERSION_ID, MC_VERSION };
