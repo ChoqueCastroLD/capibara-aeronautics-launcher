@@ -145,6 +145,77 @@ function findLwjglJar() {
   return null;
 }
 
+async function downloadModVerified(url, dest, hashes) {
+  const want = hashes && (hashes.sha512 || hashes.sha1);
+  const algo = hashes && hashes.sha512 ? 'sha512' : 'sha1';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await downloadFile(url, dest, null);
+    if (!want) return true;
+    const got = crypto.createHash(algo).update(fs.readFileSync(dest)).digest('hex');
+    if (got.toLowerCase() === String(want).toLowerCase()) return true;
+    try { fs.unlinkSync(dest); } catch {}
+  }
+  return false;
+}
+
+// Verifica que los mods en disco coincidan EXACTAMENTE con el .mrpack actual
+// (no solo "hay algo en mods/"). Descarga lo que falte/cambie y borra mods
+// viejos que sobren. Evita que se juegue con un modpack incompleto/desfasado
+// (causa de los crashes "No value with id X" al entrar al servidor).
+async function verifyAndRepairMods(send) {
+  let mrpackPath = getLocalMrpackPath();
+  let tempMrpack = null;
+  if (!mrpackPath) {
+    const info = await fetchVersionJson();
+    if (!info.mrpack_url) throw new Error('version.json sin mrpack_url');
+    tempMrpack = path.join(os.tmpdir(), `capibara-verify-${Date.now()}.mrpack`);
+    send('Verificando modpack...', 41);
+    await downloadFile(info.mrpack_url, tempMrpack, null);
+    mrpackPath = tempMrpack;
+  }
+
+  const zip = new StreamZip.async({ file: mrpackPath });
+  let repaired = 0;
+  try {
+    const index = JSON.parse((await zip.entryData('modrinth.index.json')).toString());
+    const files = index.files || [];
+    const expectedMods = new Set();
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const rel = f.path.replace(/^overrides\//, '');
+      if (rel.startsWith('mods/') && rel.endsWith('.jar')) expectedMods.add(path.basename(rel));
+      const dest = path.join(GAME_DIR, rel);
+      let ok = false;
+      try {
+        const st = fs.statSync(dest);
+        ok = !f.fileSize || st.size === f.fileSize;
+      } catch {}
+      if (!ok) {
+        send(`Reparando modpack (${i + 1}/${files.length})... ${path.basename(rel)}`, 41);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        try {
+          if (await downloadModVerified(f.downloads[0], dest, f.hashes)) repaired++;
+        } catch (e) { console.warn(`[VerifyMods] ${path.basename(rel)}: ${e.message}`); }
+      }
+    }
+
+    // Borrar mods que sobran (instalación vieja con mods que ya no van).
+    const modsDir = path.join(GAME_DIR, 'mods');
+    try {
+      for (const name of fs.readdirSync(modsDir)) {
+        if (name.endsWith('.jar') && !expectedMods.has(name)) {
+          try { fs.unlinkSync(path.join(modsDir, name)); repaired++; } catch {}
+        }
+      }
+    } catch {}
+  } finally {
+    await zip.close();
+    if (tempMrpack) { try { fs.unlinkSync(tempMrpack); } catch {} }
+  }
+  return repaired;
+}
+
 function isInstalled() {
   const versionJson = path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.json`);
   const modsDir = path.join(GAME_DIR, 'mods');
@@ -370,4 +441,4 @@ async function uninstall(onProgress) {
   send('Desinstalado correctamente', 100);
 }
 
-module.exports = { install, uninstall, getGameDir, isInstalled, findLwjglJar, repairMissingLibraries, NEOFORGE_VERSION_ID, MC_VERSION };
+module.exports = { install, uninstall, getGameDir, isInstalled, findLwjglJar, repairMissingLibraries, verifyAndRepairMods, NEOFORGE_VERSION_ID, MC_VERSION };

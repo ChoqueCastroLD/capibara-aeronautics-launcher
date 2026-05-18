@@ -486,6 +486,19 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
       log(`[Launch] Reparación previa falló: ${e.message}`);
     }
 
+    // Verificar que los mods coincidan EXACTAMENTE con el modpack actual
+    // (instalación incompleta/desfasada = crash "No value with id X" al
+    // entrar al servidor). Descarga lo que falte y borra lo que sobre.
+    try {
+      const fixed = await installer.verifyAndRepairMods((progress) => {
+        log(`[Launch] ${progress.message}`);
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('install:progress', progress);
+      });
+      if (fixed > 0) log(`[Launch] ${fixed} mods reparados/sincronizados antes de lanzar`);
+    } catch (e) {
+      log(`[Launch] Verificación de mods falló (se continúa): ${e.message}`);
+    }
+
     const s = state.load();
     discord.setPlaying({ username, modpackVersion: s.installedVersion || '2.1' }).catch(() => {});
 
