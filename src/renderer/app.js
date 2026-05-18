@@ -160,14 +160,8 @@ async function init() {
     progressWrap.classList.add('hidden');
     updateUI();
     if (code !== 0) {
-      progressWrap.classList.remove('hidden');
-      progressFill.style.width = '100%';
-      progressFill.style.background = 'var(--red)';
-      progressLabel.textContent = `✗ El juego cerró con error (código ${code}). Revisa los logs.`;
-      setTimeout(() => {
-        progressWrap.classList.add('hidden');
-        progressFill.style.background = '';
-      }, 8000);
+      $('crash-msg').innerHTML = `El juego se cerró inesperadamente (código ${code}). Para que podamos ayudarte, copia o abre el log y envíalo por el canal <strong>#soporte</strong> del Discord.`;
+      $('crash-overlay').classList.remove('hidden');
     }
   });
 }
@@ -465,6 +459,19 @@ $('btn-changelog').addEventListener('click', () => {
 $('changelog-close').addEventListener('click', () => $('changelog-overlay').classList.add('hidden'));
 $('changelog-overlay').addEventListener('click', (e) => {
   if (e.target.id === 'changelog-overlay') $('changelog-overlay').classList.add('hidden');
+});
+
+// ── Modal crash del juego ─────────────────────────────────────────────────
+$('crash-copy').addEventListener('click', async () => {
+  await window.api.copyLogs();
+  const b = $('crash-copy');
+  b.textContent = '¡Copiado!';
+  setTimeout(() => { b.textContent = 'Copiar log'; }, 1500);
+});
+$('crash-open').addEventListener('click', () => window.api.openLogs());
+$('crash-close').addEventListener('click', () => $('crash-overlay').classList.add('hidden'));
+$('crash-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'crash-overlay') $('crash-overlay').classList.add('hidden');
 });
 
 // ── Modal modlist ─────────────────────────────────────────────────────────
