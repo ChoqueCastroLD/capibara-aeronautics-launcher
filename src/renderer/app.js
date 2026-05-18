@@ -5,6 +5,8 @@ let gameRunning = false;
 let isDownloadingJava = false;
 let isOnline = navigator.onLine;
 let updateAvailable = false;
+let pendingVersion = null;
+let pendingMrpackUrl = null;
 let serverDesyncDetected = false;
 
 const $ = (id) => document.getElementById(id);
@@ -132,15 +134,8 @@ async function init() {
     window.api.checkForUpdates().then((result) => {
       if (result.hasUpdate) {
         updateAvailable = true;
-        const banner = $('update-banner');
-        $('update-text').textContent = `Nueva versión disponible — v${result.latest.version}`;
-        banner.classList.remove('hidden');
-        banner.dataset.mrpackUrl = result.latest.mrpack_url || '';
-        banner.dataset.version = result.latest.version;
-        if (result.latest.changelog) {
-          banner.dataset.changelog = result.latest.changelog;
-          $('btn-changelog').classList.remove('hidden');
-        }
+        pendingVersion = result.latest.version;
+        pendingMrpackUrl = result.latest.mrpack_url || '';
         updateUI();
       }
     }).catch(() => {});
@@ -352,6 +347,8 @@ btnPlay.addEventListener('click', async () => {
     return;
   }
 
+  if (updateAvailable) { await doUpdate(); return; }
+
   const username = usernameInput.value.trim();
   const ram = parseInt(ramSlider.value);
 
@@ -546,7 +543,7 @@ refreshServerStatus();
 setInterval(refreshServerStatus, 30000);
 
 // ── Actualizar ─────────────────────────────────────────────────────────────
-$('btn-update').addEventListener('click', async () => {
+async function doUpdate() {
   if (gameRunning || isInstalling) return;
   if (!navigator.onLine) {
     isOnline = false;
@@ -554,15 +551,13 @@ $('btn-update').addEventListener('click', async () => {
     alert('Sin conexión a internet. Conéctate para actualizar.');
     return;
   }
-  const banner = $('update-banner');
-  const newVersion = banner.dataset.version;
-  const mrpackUrl = banner.dataset.mrpackUrl;
+  const newVersion = pendingVersion;
+  const mrpackUrl = pendingMrpackUrl;
 
   isInstalling = true;
   progressWrap.classList.remove('hidden');
   progressFill.style.width = '0%';
   progressFill.style.background = '';
-  banner.classList.add('hidden');
   updateUI();
 
   const result = await window.api.installModpack({
@@ -586,7 +581,7 @@ $('btn-update').addEventListener('click', async () => {
     setTimeout(() => { progressWrap.classList.add('hidden'); progressFill.style.background = ''; }, 8000);
   }
   updateUI();
-});
+}
 
 // ── Logs ───────────────────────────────────────────────────────────────────
 $('btn-open-dir').addEventListener('click', () => window.api.openGameDir());
@@ -643,11 +638,16 @@ function updateUI() {
     else if (!hasUsername) btnPlay.textContent = 'ESCRIBE TU USUARIO';
     else btnPlay.textContent = 'INSTALAR';
   } else if (updateAvailable) {
-    // El servidor siempre corre la última versión: no tiene sentido
-    // dejar jugar en una versión vieja del modpack. Forzar actualizar.
-    btnPlay.textContent = 'ACTUALIZA PRIMERO';
-    btnPlay.className = 'play-btn offline';
-    btnPlay.disabled = true;
+    // El servidor siempre corre la última versión: el botón principal
+    // se convierte en ACTUALIZAR (no se puede jugar desfasado).
+    btnPlay.className = 'play-btn install';
+    if (hasJava) {
+      btnPlay.textContent = `ACTUALIZAR a v${pendingVersion}`;
+      btnPlay.disabled = false;
+    } else {
+      btnPlay.textContent = 'FALTA JAVA 21';
+      btnPlay.disabled = true;
+    }
   } else {
     btnPlay.className = 'play-btn';
     btnPlay.disabled = !ready;
