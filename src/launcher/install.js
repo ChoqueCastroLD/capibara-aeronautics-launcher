@@ -44,6 +44,20 @@ function clientPatchedOk() {
   return true;
 }
 
+// Mods SOLO de servidor que a veces se filtran al .mrpack del cliente y lo
+// tumban en la fase de carga (dependencia server-only [MISSING]). Ej.:
+// server-opac-bluemap-integration requiere `bluemap` (solo-servidor) →
+// "Currently, bluemap is not installed" → crash antes del menú, no deja
+// entrar. El launcher los filtra siempre, aunque el mrpack los traiga.
+const SERVER_ONLY_MOD_PATTERNS = [
+  /^server-/i,
+  /opac[-_]?bluemap[-_]?integration/i,
+  /^bluemap-(?!offlineplayermarkers)/i,
+];
+function isServerOnlyMod(fileName) {
+  return SERVER_ONLY_MOD_PATTERNS.some((re) => re.test(fileName));
+}
+
 function getGameDir() { return GAME_DIR; }
 
 const VERSION_URL = 'https://raw.githubusercontent.com/ChoqueCastroLD/aeronautics-modpack-versions/main/version.json';
@@ -207,6 +221,9 @@ async function verifyAndRepairMods(send) {
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const rel = f.path.replace(/^overrides\//, '');
+      // Mod solo-servidor colado en el mrpack: no lo esperamos ni lo
+      // descargamos; el barrido de abajo lo borra si ya está en disco.
+      if (rel.startsWith('mods/') && isServerOnlyMod(path.basename(rel))) continue;
       if (rel.startsWith('mods/') && rel.endsWith('.jar')) expectedMods.add(path.basename(rel));
       const dest = path.join(GAME_DIR, rel);
       let ok = false;
@@ -398,7 +415,13 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
     await Promise.all(batch.map(async (file) => {
       const url = file.downloads[0];
       const fileName = path.basename(file.path);
-      const dest = path.join(GAME_DIR, file.path.replace(/^overrides\//, ''));
+      const relP = file.path.replace(/^overrides\//, '');
+      if (relP.startsWith('mods/') && isServerOnlyMod(fileName)) {
+        downloaded++;
+        send(`Descargando mods (${downloaded}/${files.length})...`, 42 + (downloaded / files.length) * 45);
+        return;
+      }
+      const dest = path.join(GAME_DIR, relP);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       try {
         const ok = await downloadVerified(url, dest, file.hashes);
@@ -432,6 +455,10 @@ async function install({ javaPath, ram, mrpackUrl }, onProgress) {
   let lastPct = -1;
   for (const entry of overrideEntries) {
     const relPath = entry.replace(/^overrides\//, '');
+    if (relPath.startsWith('mods/') && isServerOnlyMod(path.basename(relPath))) {
+      ovDone++;
+      continue;
+    }
     const dest = path.join(GAME_DIR, relPath);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const data = await zip.entryData(entry);
