@@ -204,4 +204,12 @@ async function downloadTemurin21(onProgress) {
   throw lastErr || new Error('No se pudo descargar Java tras 3 intentos');
 }
 
-module.exports = { detectAll, downloadTemurin21, getVersion };
+// Borra el Java bundleado (puede estar corrupto: "java.exe -version
+// Command failed") y reinstala uno limpio.
+async function repairJava(onProgress) {
+	onProgress({ phase: 'Borrando Java dañado...', percent: 0 });
+	try { if (fs.existsSync(JAVA_DIR)) fs.rmSync(JAVA_DIR, { recursive: true, force: true }); } catch {}
+	return downloadTemurin21(onProgress);
+}
+
+module.exports = { detectAll, downloadTemurin21, repairJava, getVersion };

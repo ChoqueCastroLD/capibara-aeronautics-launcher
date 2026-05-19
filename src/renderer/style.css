@@ -86,6 +86,8 @@ body.map-hidden .play-row { margin-top: 14px; }
   display: inline-flex; align-items: center; gap: 6px; }
 .java-btn:hover:not(:disabled) { opacity: .85; }
 .java-btn:disabled { opacity: .6; cursor: not-allowed; background: var(--muted); }
+.java-btn.secondary { background: transparent; border: 1px solid var(--muted); color: var(--muted); }
+.java-btn.secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); opacity: 1; }
 .java-btn .spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3);
   border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; display: none; }
 .java-btn.loading .spinner { display: inline-block; }

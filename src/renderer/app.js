@@ -13,6 +13,7 @@ const $ = (id) => document.getElementById(id);
 
 const javaStatus = $('java-status');
 const btnDownloadJava = $('btn-download-java');
+const btnRepairJava = $('btn-repair-java');
 const usernameInput = $('username-input');
 const ramSlider = $('ram-slider');
 const ramValue = $('ram-value');
@@ -220,42 +221,60 @@ async function detectJava() {
     javaStatus.className = 'java-status err';
     btnDownloadJava.classList.remove('hidden');
   }
+  btnRepairJava.classList.toggle('hidden', !best || isDownloadingJava);
 }
 
-btnDownloadJava.addEventListener('click', async () => {
+async function doJavaInstall(repair) {
   if (isDownloadingJava) return;
   isDownloadingJava = true;
   btnDownloadJava.disabled = true;
-  btnDownloadJava.classList.add('loading');
-  btnDownloadJava.querySelector('.java-btn-text').textContent = 'Descargando... 0%';
-  javaStatus.textContent = 'Descargando Java 21...';
+  btnRepairJava.disabled = true;
+  const dlText = btnDownloadJava.querySelector('.java-btn-text');
+  const verb = repair ? 'Reparando' : 'Descargando';
+  if (repair) btnRepairJava.classList.add('loading');
+  else btnDownloadJava.classList.add('loading');
+  dlText.textContent = `${verb}... 0%`;
+  btnRepairJava.textContent = `${verb}... 0%`;
+  javaStatus.textContent = `${verb} Java 21...`;
   javaStatus.className = 'java-status warn';
   progressWrap.classList.remove('hidden', 'install-mode');
 
   window.api.onJavaProgress((p) => {
     progressFill.style.width = `${p.percent}%`;
     progressLabel.textContent = p.phase;
-    btnDownloadJava.querySelector('.java-btn-text').textContent = `${p.phase}... ${p.percent}%`;
+    dlText.textContent = `${p.phase}... ${p.percent}%`;
+    btnRepairJava.textContent = `${p.phase}... ${p.percent}%`;
   });
 
-  const result = await window.api.downloadJava();
+  const result = await (repair ? window.api.repairJava() : window.api.downloadJava());
   btnDownloadJava.classList.remove('loading');
-  btnDownloadJava.querySelector('.java-btn-text').textContent = 'Descargar Java 21';
+  btnRepairJava.classList.remove('loading');
+  dlText.textContent = 'Descargar Java 21';
+  btnRepairJava.textContent = 'Reparar Java';
+  btnDownloadJava.disabled = false;
+  btnRepairJava.disabled = false;
   if (result) {
     javaPath = result.path;
-    javaStatus.textContent = '✓ Java 21 instalado';
+    javaStatus.textContent = repair ? '✓ Java 21 reparado' : '✓ Java 21 instalado';
     javaStatus.className = 'java-status ok';
     btnDownloadJava.classList.add('hidden');
     state.javaPath = javaPath;
     window.api.saveState({ javaPath });
   } else {
-    javaStatus.textContent = '✗ Error al descargar Java';
+    javaStatus.textContent = repair ? '✗ Error al reparar Java' : '✗ Error al descargar Java';
     javaStatus.className = 'java-status err';
   }
 
   isDownloadingJava = false;
   progressWrap.classList.add('hidden');
   updateUI();
+}
+
+btnDownloadJava.addEventListener('click', () => doJavaInstall(false));
+btnRepairJava.addEventListener('click', () => {
+  if (isDownloadingJava) return;
+  if (!confirm('Esto borrará el Java instalado y descargará Java 21 de nuevo. ¿Continuar?')) return;
+  doJavaInstall(true);
 });
 
 // ── Username & RAM ─────────────────────────────────────────────────────────
@@ -607,6 +626,7 @@ function updateUI() {
   ramSlider.disabled = locked;
   gpuSelect.disabled = locked;
   btnDownloadJava.disabled = locked || isDownloadingJava;
+  btnRepairJava.disabled = locked || isDownloadingJava;
 
   const hasUsername = usernameInput.value.trim().length >= 3;
   const hasJava = !!javaPath;

@@ -374,6 +374,18 @@ ipcMain.handle('java:download', async () => {
   }
 });
 
+ipcMain.handle('java:repair', async () => {
+  try {
+    return await javaManager.repairJava((progress) => {
+      log(`[Java] ${progress.phase} ${progress.percent}%`);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('java:progress', progress);
+    });
+  } catch (e) {
+    log(`[Java] ERROR reparando: ${e.message}`);
+    return null;
+  }
+});
+
 ipcMain.handle('java:browse', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Selecciona el ejecutable de Java',

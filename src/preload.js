@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   detectGpus: () => ipcRenderer.invoke('gpu:detect'),
   detectJava: () => ipcRenderer.invoke('java:detect'),
   downloadJava: () => ipcRenderer.invoke('java:download'),
+  repairJava: () => ipcRenderer.invoke('java:repair'),
   browseJava: () => ipcRenderer.invoke('java:browse'),
   onJavaProgress: (cb) => ipcRenderer.on('java:progress', (_e, v) => cb(v)),
 
