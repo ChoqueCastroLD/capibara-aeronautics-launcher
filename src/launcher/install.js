@@ -10,7 +10,7 @@ const { downloadFile } = require('./download');
 
 const GAME_DIR = path.join(app.getPath('appData'), 'CapibaraAeronautics');
 const MC_DIR = path.join(app.getPath('appData'), '.minecraft');
-const NEOFORGE_VERSION = '21.1.228';
+const NEOFORGE_VERSION = '21.1.231';
 const MC_VERSION = '1.21.1';
 const NEOFORGE_VERSION_ID = `neoforge-${NEOFORGE_VERSION}`;
 const NEOFORGE_INSTALLER_URL = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${NEOFORGE_VERSION}/neoforge-${NEOFORGE_VERSION}-installer.jar`;

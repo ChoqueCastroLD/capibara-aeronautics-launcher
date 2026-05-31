@@ -59,7 +59,7 @@ function isLibAllowedOnWindows(lib) {
 
 // Construye el classpath leyendo los JSON de versión de NeoForge y vanilla.
 // Incluye 1.21.1.jar para que los módulos de Minecraft estén disponibles en la module layer.
-// MCLC añade neoforge-21.1.228.jar al final (game JAR), que Connector necesita encontrar.
+// MCLC añade neoforge-21.1.231.jar al final (game JAR), que Connector necesita encontrar.
 function buildClasspath() {
 	const libDir = path.join(MC_DIR, 'libraries');
 	const seen = new Set();
@@ -123,7 +123,7 @@ function buildClasspath() {
 		}
 	}
 
-	// neoforge-21.1.228.jar lo añade MCLC como trailing game JAR.
+	// neoforge-21.1.231.jar lo añade MCLC como trailing game JAR.
 	// NO añadimos 1.21.1.jar porque eso confunde al bootstraplauncher
 	// al intentar procesarlo como módulo fuera de DignoreList.
 

@@ -4,6 +4,7 @@ dist/
 
 # Excluded for size — bundled at build time only
 resources/modpack.mrpack
+*.mrpack
 
 # User runtime data
 launcher-state.json
