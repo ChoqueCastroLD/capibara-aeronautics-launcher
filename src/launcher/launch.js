@@ -134,7 +134,16 @@ function buildClasspath() {
 //   'data'  → string con log del juego
 //   'close' → código de salida
 //   'download-progress' → { name, current, total } mientras descarga assets faltantes
-async function launch({ username, javaPath, ram }, { onData, onClose, onProgress }) {
+function parseUserJvmArgs(str) {
+	if (!str || typeof str !== 'string') return [];
+	const out = [];
+	const re = /(?:[^\s"]+|"[^"]*")+/g;
+	let m;
+	while ((m = re.exec(str)) !== null) out.push(m[0].replace(/^"|"$/g, ''));
+	return out;
+}
+
+async function launch({ username, javaPath, ram, javaArgs }, { onData, onClose, onProgress }) {
 	const client = new Client();
 	const uuid = generateOfflineUUID(username);
 
@@ -148,7 +157,8 @@ async function launch({ username, javaPath, ram }, { onData, onClose, onProgress
 	console.log(`[launch] Game JAR (MCLC): ${path.join(MC_DIR, 'versions', NEOFORGE_VERSION_ID, `${NEOFORGE_VERSION_ID}.jar`)}`);
 
 	const gameDir = getGameDir();
-	const jvmArgs = buildNeoForgeJvmArgs();
+	const userExtra = parseUserJvmArgs(javaArgs);
+	const jvmArgs = [...userExtra, ...buildNeoForgeJvmArgs()];
 	console.log(`[launch] JVM args: ${jvmArgs.join(' ')}`);
 
 	const opts = {

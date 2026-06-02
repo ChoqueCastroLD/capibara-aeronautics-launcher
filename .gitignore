@@ -1,5 +1,6 @@
 node_modules/
 dist/
+src/renderer-dist/
 *.log
 
 # Excluded for size — bundled at build time only
@@ -23,3 +24,8 @@ Thumbs.db
 logs.txt
 message*.txt
 crash-*.txt
+
+# QA artifacts
+.qa.js
+.qa2.js
+qa-*.png

@@ -8,6 +8,7 @@ const DEFAULTS = {
   username: '',
   ram: 6,
   javaPath: null,
+  javaArgs: '',
   installed: false,
   installedVersion: null,
 };

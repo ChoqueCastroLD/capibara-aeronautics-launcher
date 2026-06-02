@@ -1,0 +1,426 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Capibara Aeronautics Launcher — Cockpit / HUD dark theme
+   Single theme. Deep graphite base, cold steel surfaces, warm
+   amber instrument-light accent. Aviation, not army.
+   ============================================================ */
+
+@layer base {
+	:root {
+		--titlebar: 34px;
+
+		/* Surfaces & ink */
+		--bg-0:  13 17 23;       /* deepest void */
+		--bg-1:  18 24 31;       /* base */
+		--bg-2:  24 30 38;       /* fog */
+		--bg-3:  29 36 45;       /* highlight */
+		--surface:   22 27 34;
+		--surface-2: 27 33 41;
+		--border:        48 54 61;
+		--border-soft:   38 44 51;
+
+		--ink:       230 237 243;
+		--ink-mute:  171 178 191;
+		--ink-soft:  125 133 144;
+
+		/* Accents */
+		--amber:     212 162 76;   /* instrument warmth — primary */
+		--amber-hi:  236 188 100;
+		--steel:     92 143 184;   /* cold blue cockpit */
+		--steel-hi:  124 168 207;
+		--copper:    176 110 64;
+		--rust:      209 84 75;    /* oxide red — danger */
+		--mint:      63 185 80;    /* nav green — online */
+	}
+
+	html, body, #root { height: 100%; }
+	body {
+		font-family: 'IBM Plex Sans', system-ui, sans-serif;
+		color: rgb(var(--ink));
+		@apply antialiased select-none overflow-hidden;
+		background: rgb(var(--bg-1));
+		-webkit-font-smoothing: antialiased;
+	}
+
+	/* Cockpit atmosphere: cold blue glow from top corners, void floor. */
+	#root {
+		background-image:
+			radial-gradient(ellipse 60% 45% at 15% 0%,   rgba(92,143,184,.22), transparent 70%),
+			radial-gradient(ellipse 70% 50% at 85% 5%,   rgba(212,162,76,.13),  transparent 70%),
+			radial-gradient(ellipse 120% 80% at 50% 110%,rgba(0,0,0,.6), transparent 70%),
+			linear-gradient(180deg, rgb(var(--bg-1)) 0%, rgb(var(--bg-0)) 100%);
+	}
+
+	/* film-grain overlay */
+	#root::before {
+		content: '';
+		position: fixed; inset: 0; z-index: 0;
+		pointer-events: none; opacity: .35;
+		mix-blend-mode: overlay;
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 1, 0 0 0 0 1, 0 0 0 0 1, 0 0 0 0.05 0'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>");
+	}
+
+	/* Faint grid overlay (HUD chrome) */
+	#root::after {
+		content: '';
+		position: fixed; inset: 0; z-index: 0;
+		pointer-events: none; opacity: .035;
+		background-image:
+			linear-gradient(rgba(212,162,76,.6) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(212,162,76,.6) 1px, transparent 1px);
+		background-size: 28px 28px;
+	}
+
+	* { -webkit-user-drag: none; }
+	input, textarea, [contenteditable] { @apply select-text; }
+	::-webkit-scrollbar { @apply w-1.5 h-1.5; }
+	::-webkit-scrollbar-thumb { background: rgba(var(--ink), .22); border-radius: 999px; }
+	::-webkit-scrollbar-track { background: transparent; }
+	::selection { background: rgba(var(--amber), .35); color: rgb(var(--bg-0)); }
+
+	button { outline: none; transition: all 160ms cubic-bezier(.2,.7,.2,1); }
+	button:focus-visible { outline: 2px solid rgb(var(--amber)); outline-offset: 2px; border-radius: 4px; }
+}
+
+@layer components {
+
+	/* ── Titlebar (drag) ────────────────────────────────── */
+	.app-titlebar {
+		-webkit-app-region: drag;
+		height: var(--titlebar);
+		@apply relative z-30 flex items-center justify-between pl-3 pr-1 select-none;
+		border-bottom: 1px solid rgb(var(--border-soft));
+		background: rgba(var(--bg-0), .65);
+		backdrop-filter: blur(14px) saturate(120%);
+	}
+	.app-titlebar button { -webkit-app-region: no-drag; }
+	.win-ctrl {
+		@apply w-9 h-7 grid place-items-center rounded;
+		color: rgba(var(--ink), .55);
+	}
+	.win-ctrl:hover { color: rgb(var(--ink)); background: rgba(var(--ink), .08); }
+	.win-ctrl.close:hover { background: rgb(var(--rust)); color: #fff; }
+
+	/* ── Panels ─────────────────────────────────────────── */
+	.panel {
+		background: rgba(var(--surface), .92);
+		border: 1px solid rgb(var(--border));
+		box-shadow:
+			inset 0 1px 0 rgba(255,255,255,.04),
+			0 1px 0 rgba(0,0,0,.4),
+			0 12px 32px -16px rgba(0,0,0,.6);
+	}
+	.panel-soft {
+		background: rgba(var(--surface-2), .7);
+		border: 1px solid rgb(var(--border-soft));
+	}
+
+	/* Subtle inner highlight at the top of cards */
+	.panel-hl::before {
+		content: '';
+		position: absolute; top: 0; left: 12px; right: 12px;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, rgba(var(--amber), .35), transparent);
+		opacity: .55;
+		pointer-events: none;
+	}
+
+	/* ── Buttons ────────────────────────────────────────── */
+	.btn {
+		@apply relative inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-md text-[12.5px] font-medium;
+		background: rgba(var(--surface-2), .9);
+		border: 1px solid rgb(var(--border));
+		color: rgb(var(--ink));
+		transition: all 140ms ease;
+	}
+	.btn:hover:not(:disabled) {
+		background: rgb(var(--bg-3));
+		border-color: rgba(var(--amber), .35);
+		color: rgb(var(--amber-hi));
+	}
+	.btn:active:not(:disabled) { transform: translateY(1px); }
+	.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+	.btn-primary {
+		background: linear-gradient(180deg, rgb(var(--amber-hi)), rgb(var(--amber)));
+		border-color: rgba(var(--amber-hi), .9);
+		color: #1a1207;
+		box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 14px -6px rgba(var(--amber), .55);
+	}
+	.btn-primary:hover:not(:disabled) {
+		filter: brightness(1.1);
+		color: #1a1207;
+	}
+	.btn-ghost {
+		background: transparent;
+		border-color: transparent;
+		color: rgba(var(--ink), .8);
+	}
+	.btn-ghost:hover:not(:disabled) { background: rgba(var(--ink), .06); color: rgb(var(--ink)); border-color: transparent; }
+	.btn-danger {
+		color: rgb(var(--rust));
+		background: rgba(var(--rust), .1);
+		border-color: rgba(var(--rust), .4);
+	}
+	.btn-danger:hover:not(:disabled) { background: rgba(var(--rust), .18); color: rgb(var(--rust)); }
+
+	/* ── Inputs ─────────────────────────────────────────── */
+	.input {
+		@apply w-full px-3 py-2 rounded-md text-[13px] outline-none;
+		background: rgb(var(--bg-0));
+		border: 1px solid rgb(var(--border));
+		color: rgb(var(--ink));
+		transition: border-color .15s, box-shadow .15s, background .15s;
+		font-family: inherit;
+	}
+	.input::placeholder { color: rgba(var(--ink), .3); }
+	.input:focus {
+		border-color: rgb(var(--amber));
+		box-shadow: 0 0 0 3px rgba(var(--amber), .15);
+	}
+	.input.invalid { border-color: rgb(var(--rust)); box-shadow: 0 0 0 3px rgba(var(--rust), .18); }
+
+	.input-mono { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; }
+
+	/* ── Pills ──────────────────────────────────────────── */
+	.pill {
+		@apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium font-mono tracking-mini whitespace-nowrap;
+		background: rgba(var(--bg-0), .8);
+		border: 1px solid rgb(var(--border));
+		color: rgb(var(--ink));
+	}
+	.pill .dot { @apply inline-block w-1.5 h-1.5 rounded-full; }
+	.pill .dot.online { background: rgb(var(--mint));  box-shadow: 0 0 10px rgba(var(--mint), .65); }
+	.pill .dot.warn   { background: rgb(var(--amber)); box-shadow: 0 0 10px rgba(var(--amber), .65); }
+	.pill .dot.off    { background: rgba(var(--ink), .35); }
+	.pill .dot.bad    { background: rgb(var(--rust));  box-shadow: 0 0 10px rgba(var(--rust), .55); }
+
+	/* ── Range slider (amber accent) ────────────────────── */
+	.range {
+		@apply w-full appearance-none h-[5px] rounded-full outline-none cursor-pointer;
+		background: linear-gradient(90deg, rgb(var(--amber)) var(--p,50%), rgba(var(--ink),.1) var(--p,50%));
+	}
+	.range::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		@apply w-[14px] h-[14px] rounded-full cursor-pointer;
+		background: rgb(var(--bg-0));
+		border: 2px solid rgb(var(--amber));
+		box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 0 8px rgba(var(--amber), .45);
+		transition: transform .15s;
+	}
+	.range::-webkit-slider-thumb:hover { transform: scale(1.18); }
+	.range:disabled { opacity: .45; cursor: not-allowed; }
+
+	/* ── Play button — the focal HUD element ────────────── */
+	.play {
+		@apply relative w-full overflow-hidden rounded-md py-[18px] font-sans text-[14px] font-semibold tracking-[0.18em] uppercase;
+		transition: all 200ms cubic-bezier(.2,.7,.2,1);
+		border: 1px solid transparent;
+	}
+	.play[data-variant="play"] {
+		color: #1a1207;
+		background: linear-gradient(180deg, rgb(var(--amber-hi)), rgb(var(--amber)));
+		border-color: rgba(var(--amber-hi), .85);
+		box-shadow:
+			inset 0 1px 0 rgba(255,255,255,.35),
+			0 0 0 1px rgba(0,0,0,.3),
+			0 12px 28px -10px rgba(var(--amber), .55),
+			0 0 32px -8px rgba(var(--amber), .35);
+	}
+	.play[data-variant="play"]:not(:disabled):hover { filter: brightness(1.1); transform: translateY(-1px); }
+	.play[data-variant="install"] {
+		color: rgb(var(--ink));
+		background: linear-gradient(180deg, rgb(var(--steel-hi)), rgb(var(--steel)));
+		border-color: rgba(var(--steel-hi), .85);
+		box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 10px 24px -10px rgba(var(--steel), .55);
+	}
+	.play[data-variant="install"]:not(:disabled):hover { filter: brightness(1.1); transform: translateY(-1px); }
+	.play[data-variant="update"] {
+		color: #1a1207;
+		background: linear-gradient(180deg, rgb(var(--amber-hi)), rgb(var(--copper)));
+		border-color: rgba(var(--amber-hi), .9);
+		box-shadow:
+			inset 0 1px 0 rgba(255,255,255,.3),
+			0 10px 26px -10px rgba(var(--amber), .6);
+		animation: pulse-amber 2.4s ease-out infinite;
+	}
+	.play[data-variant="busy"] {
+		color: rgb(var(--ink));
+		background: rgb(var(--surface));
+		border-color: rgb(var(--border));
+		cursor: progress;
+	}
+	.play[data-variant="busy"] .play-bar {
+		@apply absolute left-0 top-0 bottom-0 z-[1] transition-[width] duration-300 ease-out;
+		background: linear-gradient(180deg, rgba(var(--amber), .35), rgba(var(--amber), .18));
+	}
+	.play[data-variant="busy"] .play-bar::after {
+		content: ''; position: absolute; inset: 0;
+		background-image: linear-gradient(110deg, transparent 35%, rgba(var(--amber),.4) 50%, transparent 65%);
+		background-size: 200% 100%;
+		animation: sweep 1.6s linear infinite;
+	}
+	.play[data-variant="playing"] {
+		color: rgba(var(--ink), .75);
+		background: rgb(var(--surface));
+		border-color: rgb(var(--border));
+		cursor: default;
+	}
+	.play[data-variant="block"], .play[data-variant="offline"] {
+		color: rgba(var(--ink), .35);
+		background: rgba(var(--surface-2), .6);
+		border-color: rgb(var(--border-soft));
+		cursor: not-allowed;
+	}
+	.play .label { @apply relative z-10 inline-flex items-center gap-3; }
+
+	/* ── Tab bar ────────────────────────────────────────── */
+	.tab-bar {
+		@apply flex items-center gap-0 border-b overflow-x-auto;
+		border-color: rgb(var(--border-soft));
+	}
+	.tab {
+		@apply relative px-3 py-2 text-[11.5px] font-semibold tracking-mini uppercase whitespace-nowrap;
+		color: rgba(var(--ink), .5);
+		border-bottom: 2px solid transparent;
+		margin-bottom: -1px;
+		font-family: 'IBM Plex Mono', monospace;
+		transition: color .15s, border-color .15s;
+	}
+	.tab:hover { color: rgb(var(--ink)); }
+	.tab[data-active="true"] {
+		color: rgb(var(--amber-hi));
+		border-color: rgb(var(--amber));
+	}
+
+	/* ── Section labels (mono kicker) ───────────────────── */
+	.kicker {
+		@apply uppercase tracking-[0.14em] text-[10px] font-semibold;
+		color: rgba(var(--ink), .45);
+		font-family: 'IBM Plex Mono', monospace;
+	}
+
+	/* ── Toggle switch ──────────────────────────────────── */
+	.switch {
+		@apply relative inline-block w-9 h-5 rounded-full transition-colors;
+		background: rgba(var(--ink), .12);
+	}
+	.switch[data-on="true"] { background: rgb(var(--amber)); }
+	.switch::after {
+		content: '';
+		position: absolute; top: 2px; left: 2px;
+		width: 16px; height: 16px;
+		background: rgb(var(--bg-0)); border-radius: 999px;
+		transition: left .18s ease;
+		box-shadow: 0 1px 3px rgba(0,0,0,.6);
+	}
+	.switch[data-on="true"]::after { left: 20px; background: #fff; }
+
+	/* ── Radio cards ───────────────────────────────────── */
+	.choice {
+		@apply text-left p-2.5 rounded-md border cursor-pointer transition-all;
+		background: rgba(var(--surface-2), .6);
+		border-color: rgb(var(--border-soft));
+	}
+	.choice:hover { border-color: rgba(var(--amber), .35); background: rgba(var(--surface-2), .9); }
+	.choice[data-active="true"] {
+		border-color: rgb(var(--amber));
+		background: rgba(var(--amber), .07);
+		box-shadow: inset 0 0 0 1px rgba(var(--amber), .25);
+	}
+
+	/* ── Floating dock ──────────────────────────────────── */
+	.dock {
+		@apply inline-flex items-center gap-1 px-2 py-1.5 rounded-xl;
+		background: rgba(var(--bg-0), .85);
+		backdrop-filter: blur(18px) saturate(150%);
+		border: 1px solid rgb(var(--border));
+		box-shadow:
+			inset 0 1px 0 rgba(255,255,255,.04),
+			0 10px 24px -10px rgba(0,0,0,.6);
+	}
+	.dock-btn {
+		@apply relative w-9 h-9 grid place-items-center rounded-lg;
+		color: rgba(var(--ink), .6);
+	}
+	.dock-btn:hover { color: rgb(var(--amber-hi)); background: rgba(var(--amber), .08); }
+	.dock-btn .tip {
+		position: absolute; bottom: calc(100% + 6px); left: 50%;
+		transform: translateX(-50%);
+		padding: 3px 8px; font-size: 10px; font-weight: 600;
+		letter-spacing: .06em; text-transform: uppercase;
+		font-family: 'IBM Plex Mono', monospace;
+		background: rgb(var(--bg-0)); color: rgb(var(--amber-hi));
+		border: 1px solid rgb(var(--border));
+		border-radius: 4px; white-space: nowrap;
+		opacity: 0; pointer-events: none;
+		transition: opacity .15s;
+	}
+	.dock-btn:hover .tip { opacity: 1; }
+	.dock-btn[data-active="true"] { color: rgb(var(--amber-hi)); background: rgba(var(--amber), .12); }
+
+	/* ── Modal (confirmations only) ─────────────────────── */
+	.modal-backdrop {
+		@apply fixed inset-0 z-40 animate-fade-in;
+		background: rgba(0, 0, 0, .55);
+		backdrop-filter: blur(4px);
+	}
+	.modal-shell {
+		@apply fixed inset-0 z-50 grid place-items-center p-6 pointer-events-none;
+	}
+	.modal-card {
+		@apply pointer-events-auto animate-slide-up rounded-md overflow-hidden;
+		background: rgb(var(--surface));
+		border: 1px solid rgb(var(--border));
+		box-shadow: 0 24px 48px -16px rgba(0,0,0,.7);
+	}
+
+	/* ── Progress bars ──────────────────────────────────── */
+	.bar-track {
+		@apply w-full h-1 rounded-full overflow-hidden;
+		background: rgba(var(--ink), .08);
+	}
+	.bar-fill {
+		@apply h-full transition-[width] duration-300 ease-out;
+		background: linear-gradient(90deg, rgb(var(--amber)), rgb(var(--amber-hi)));
+		box-shadow: 0 0 12px rgba(var(--amber), .55);
+	}
+
+	/* ── Logs (inline) ──────────────────────────────────── */
+	.log-pane {
+		font-family: 'IBM Plex Mono', monospace;
+		background: rgb(var(--bg-0));
+		color: rgba(230, 237, 243, .8);
+		font-size: 11px; line-height: 1.55;
+	}
+	.log-row { @apply whitespace-pre-wrap break-words px-3 py-px; }
+	.log-row.err  { color: #e8857a; }
+	.log-row.warn { color: rgb(var(--amber-hi)); }
+	.log-row.info { color: rgba(230, 237, 243, .65); }
+	.log-row .ln  { @apply inline-block w-8 text-right pr-3 select-none; color: rgba(230,237,243,.22); }
+
+	/* ── Dotline anim ───────────────────────────────────── */
+	.dotline span { display: inline-block; width: 4px; height: 4px; border-radius: 999px; background: currentColor; opacity: .4; }
+	.dotline span:nth-child(1) { animation: caret-blink 1.4s steps(2) infinite; }
+	.dotline span:nth-child(2) { animation: caret-blink 1.4s steps(2) infinite .25s; }
+	.dotline span:nth-child(3) { animation: caret-blink 1.4s steps(2) infinite .5s; }
+
+	/* ── Hairline stripe ───────────────────────────────── */
+	.stripe-rule {
+		height: 2px;
+		background-image: repeating-linear-gradient(135deg,
+			rgba(var(--amber), .55) 0 6px,
+			transparent 6px 12px);
+		opacity: .4;
+	}
+}
+
+@keyframes pulse-amber {
+	0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 10px 24px -10px rgba(212,162,76,.55); }
+	50%      { box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 14px 30px -10px rgba(212,162,76,.85); }
+}
+
+.pixelated { image-rendering: pixelated; image-rendering: crisp-edges; }

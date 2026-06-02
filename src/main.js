@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Tray, Menu, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, powerSaveBlocker } = require('electron');
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -15,53 +15,14 @@ const discord = require('./launcher/discord');
 const ping = require('ping-minecraft-server');
 
 let mainWindow;
-let tray = null;
 let isQuitting = false;
-const TRAY_ICON = path.join(__dirname, '..', 'resources', 'icon.ico');
 
-function showLauncher() {
+// Trae la ventana al frente sin ocultarla nunca a la bandeja.
+function focusLauncher() {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-}
-
-// Oculta al tray si existe; si no, minimiza (para no dejar la ventana inaccesible)
-function hideToTray() {
-  if (!mainWindow) return;
-  if (tray) mainWindow.hide();
-  else mainWindow.minimize();
-}
-
-function resolveTrayIcon() {
-  const candidates = [
-    TRAY_ICON,
-    path.join(__dirname, '..', 'resources', 'logo.png'),
-    path.join(process.resourcesPath || '', 'icon.ico'),
-  ];
-  for (const c of candidates) {
-    try { if (c && fs.existsSync(c)) return c; } catch {}
-  }
-  return TRAY_ICON;
-}
-
-function createTray() {
-  if (tray) return;
-  try {
-    const iconPath = resolveTrayIcon();
-    tray = new Tray(iconPath);
-    log(`[Tray] Icono: ${iconPath}`);
-    tray.setToolTip('Capibara Aeronautics Launcher');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Abrir launcher', click: showLauncher },
-      { type: 'separator' },
-      { label: 'Salir', click: () => { isQuitting = true; app.quit(); } },
-    ]));
-    tray.on('click', showLauncher);
-    tray.on('double-click', showLauncher);
-  } catch (e) {
-    console.warn('[Tray] No se pudo crear:', e.message);
-  }
 }
 
 // ── Log buffer ────────────────────────────────────────────────────────────────
@@ -90,21 +51,22 @@ function log(line) {
   else if (!logFlushTimer) logFlushTimer = setTimeout(() => { logFlushTimer = null; flushLog(); }, 400);
 }
 
-const MAP_W = 440;
-const LAUNCHER_W = 480;
-const WIN_H = 560;
+const LAUNCHER_W = 960;
+const WIN_H = 620;
 
 function createWindow() {
+  // Split: izquierda HeroCard (siempre con botón Jugar visible), derecha panel inline.
+  // Mínimo razonable para que todo entre sin scroll.
   mainWindow = new BrowserWindow({
-    width: LAUNCHER_W + MAP_W,
+    width: LAUNCHER_W,
     height: WIN_H,
-    minWidth: LAUNCHER_W + MAP_W,
+    minWidth: LAUNCHER_W,
     minHeight: WIN_H,
     frame: false,
     resizable: true,
     title: `Capibara Aeronautics Launcher v${app.getVersion()}`,
     icon: path.join(__dirname, '..', 'resources', 'icon.ico'),
-    backgroundColor: '#0f1117',
+    backgroundColor: '#0D1117',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -112,14 +74,15 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
+  const devUrl = process.env.ELECTRON_RENDERER_URL;
+  if (devUrl) {
+    mainWindow.loadURL(devUrl);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'renderer-dist/index.html'));
+  }
 
-  mainWindow.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault();
-      hideToTray();
-    }
-  });
+  // Cerrar la ventana = cerrar de verdad. before-quit mata el juego.
+  mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 // Una sola instancia: si se abre de nuevo, enfoca la ya existente.
@@ -167,7 +130,7 @@ if (!gotLock) {
       isQuitting = true;
       app.quit();
     } else {
-      showLauncher();
+      focusLauncher();
     }
   });
 
@@ -181,7 +144,6 @@ if (!gotLock) {
       fs.writeFileSync(LOG_FILE, `=== Sesión iniciada ${new Date().toISOString()} ===\n`);
     } catch {}
     createWindow();
-    createTray();
 
     // Evitar que Windows suspenda/throttlee el launcher en el tray
     // (causaba "Application Hang - Top level window is idle").
@@ -191,7 +153,7 @@ if (!gotLock) {
     setInterval(selfUnthrottle, 60000);
   });
 }
-app.on('window-all-closed', () => { if (isQuitting) app.quit(); });
+app.on('window-all-closed', () => { app.quit(); });
 app.on('before-quit', () => {
   isQuitting = true;
   // El juego depende del launcher: al salir de verdad, cerrar el juego también.
@@ -222,9 +184,10 @@ ipcMain.on('window:maximize', () => {
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
   else mainWindow.maximize();
 });
-ipcMain.on('window:close', () => hideToTray());
+ipcMain.on('window:close', () => { app.quit(); });
 ipcMain.on('window:setMapVisible', (_e, visible) => {
   state.save({ mapVisible: visible });
+  // El mapa ahora es overlay dentro del renderer; no se cambia el tamaño de ventana.
 });
 
 // ── Skin cache ────────────────────────────────────────────────────────────────
@@ -489,7 +452,7 @@ function clearEfficiencyMode(pid) {
 }
 
 // ── Lanzamiento ───────────────────────────────────────────────────────────────
-ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) => {
+ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref, javaArgs }) => {
   try {
     log(`[Launch] Iniciando juego para ${username}`);
 
@@ -543,7 +506,7 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
     discord.setPlaying({ username, modpackVersion: s.installedVersion || '2.1' }).catch(() => {});
 
     await launcher.launch(
-      { username, javaPath, ram },
+      { username, javaPath, ram, javaArgs },
       {
         onData: (line) => {
           log(`[Game] ${line.trim()}`);
@@ -553,7 +516,7 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
           log(`[Game] Proceso cerrado con código ${code}`);
           discord.setIdle().catch(() => {});
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('game:closed', code);
-          showLauncher();
+          focusLauncher();
         },
         onProgress: (progress) => {
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('install:progress', progress);
@@ -561,7 +524,7 @@ ipcMain.handle('game:launch', async (_e, { username, javaPath, ram, gpuPref }) =
       }
     );
 
-    hideToTray();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
 
     // Sacar a Java y su árbol de procesos del modo eficiencia de Windows.
     // Se reintenta porque el árbol (bootstrap → java → game) se va creando.

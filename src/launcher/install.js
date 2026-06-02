@@ -104,11 +104,8 @@ async function fetchMojangVanillaJson() {
   return fetchJson(entry.url);
 }
 
-function getLocalMrpackPath() {
-  if (app.isPackaged) return null;
-  const localPath = path.join(__dirname, '../../resources/modpack.mrpack');
-  return fs.existsSync(localPath) ? localPath : null;
-}
+// El launcher nunca empaqueta el mrpack: siempre se baja del version.json.
+function getLocalMrpackPath() { return null; }
 
 async function repairMissingLibraries(send) {
   const libDir = path.join(MC_DIR, 'libraries');
