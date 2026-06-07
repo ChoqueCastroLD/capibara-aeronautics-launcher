@@ -33,7 +33,7 @@ export function installMockApi() {
 		getState: async () => ({ username: 'ShokoCC', ram: 8, javaPath: null, javaArgs: '', installed, installedVersion: installed ? '2.4.2' : null, gpuPref: 2 }),
 		saveState: async (d) => { log('saveState', d); return d },
 		getTotalRamGB: async () => 32,
-		getAppVersion: async () => '1.1.0',
+		getAppVersion: async () => '1.1.1',
 		detectGpus: async () => [{ name: 'NVIDIA GeForce RTX 4080' }, { name: 'Intel UHD Graphics' }],
 		detectJava: async () => javaList,
 		downloadJava: async () => { for (let i = 0; i <= 100; i += 10) { emit('java', { percent: i, phase: 'Descargando' }); await new Promise(r => setTimeout(r, 60)) } return { path: 'C:/Java/jdk-21/bin/javaw.exe' } },

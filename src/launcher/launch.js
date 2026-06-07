@@ -143,6 +143,21 @@ function parseUserJvmArgs(str) {
 	return out;
 }
 
+// ZGC generacional (Java 21+): GC concurrente sin pausas perceptibles.
+// Distant Horizons recomienda explícitamente esto (warning del propio mod
+// si detecta G1). Se omite si el usuario ya pasó un GC manual.
+function buildDefaultGcArgs(userArgs) {
+	const userHasGc = userArgs.some(a => /^-XX:\+Use\w+GC$/.test(a));
+	if (userHasGc) return [];
+	return [
+		'-XX:+UseZGC',
+		'-XX:+ZGenerational',
+		'-XX:+AlwaysPreTouch',
+		'-XX:+DisableExplicitGC',
+		'-XX:-OmitStackTraceInFastThrow',
+	];
+}
+
 async function launch({ username, javaPath, ram, javaArgs }, { onData, onClose, onProgress }) {
 	const client = new Client();
 	const uuid = generateOfflineUUID(username);
@@ -158,7 +173,8 @@ async function launch({ username, javaPath, ram, javaArgs }, { onData, onClose, 
 
 	const gameDir = getGameDir();
 	const userExtra = parseUserJvmArgs(javaArgs);
-	const jvmArgs = [...userExtra, ...buildNeoForgeJvmArgs()];
+	const gcArgs = buildDefaultGcArgs(userExtra);
+	const jvmArgs = [...gcArgs, ...userExtra, ...buildNeoForgeJvmArgs()];
 	console.log(`[launch] JVM args: ${jvmArgs.join(' ')}`);
 
 	const opts = {
